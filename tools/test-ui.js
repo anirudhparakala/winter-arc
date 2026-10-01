@@ -266,3 +266,19 @@ function tokenProblems(sources) {
   assert.ok(!/Charts\.ring|hero-ring/.test(Object.values(sources).join('\n')), 'progress ring was retired');
   console.log('tokens ok');
 })();
+
+/* ---------- label contrast: informational labels use --g1, never the dim --g2 ---------- */
+(function () {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'style.css'), 'utf8');
+  // the declaration block of the rule whose selector is exactly `sel`
+  const block = sel => {
+    const from = css.indexOf('\n' + sel + ' {');
+    assert.ok(from >= 0, 'rule found for ' + sel);
+    return css.slice(css.indexOf('{', from) + 1, css.indexOf('}', from));
+  };
+  ['.lb', '.field > span', '.section-label', '.card-label'].forEach(sel => {
+    const decl = block(sel).split(';').map(d => d.trim()).find(d => d.startsWith('color:'));
+    assert.strictEqual(decl, 'color: var(--g1)', sel + ' must use --g1 (--g2 is ~2.8:1 on black)');
+  });
+  console.log('label contrast ok');
+})();

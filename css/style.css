@@ -24,7 +24,7 @@
   --rule-2:      #2e2e2e;
   --text:        #f2f2f2;
   --g1:          #8a8a8a;   /* body-text grey (4.5:1 on black) */
-  --g2:          #555555;   /* non-essential labels only */
+  --g2:          #555555;   /* rules and decoration only (~2.8:1): never real information */
   --accent:      #8ecbff;   /* lit states only */
   --accent-glow: rgba(142, 203, 255, .5);
   --on-accent:   #000000;   /* text/ink drawn on an accent fill */
@@ -91,7 +91,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
        stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* ---------- shared instrument utilities ---------- */
-.lb { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--g2); }
+.lb { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--g1); }
 .dotnum { font-family: var(--f-dot); font-weight: 900; }
 .mod { background: var(--panel); padding: 18px; }
 .mh { display: flex; justify-content: space-between; margin-bottom: 6px; }
@@ -177,7 +177,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
   border-radius: 0;
   padding: 18px;
 }
-.card-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g2); }
+.card-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g1); }
 .row { display: flex; align-items: center; gap: 10px; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--g1); }
@@ -185,7 +185,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 .empty { padding: 26px; text-align: center; color: var(--g1); font: 11px var(--f-mono);
          letter-spacing: .12em; text-transform: uppercase; }
 .section-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase;
-                 color: var(--g2); margin: 24px 0 10px; }
+                 color: var(--g1); margin: 24px 0 10px; }
 .scroll-x { overflow-x: auto; }
 
 button:active { transform: translateY(1px); }
@@ -216,7 +216,7 @@ button:active { transform: translateY(1px); }
 .textarea { resize: vertical; min-height: 64px; }
 .field { display: block; margin-bottom: 14px; }
 .field > span { display: block; margin-bottom: 6px; font: 11px var(--f-mono);
-                text-transform: uppercase; letter-spacing: .12em; color: var(--g2); }
+                text-transform: uppercase; letter-spacing: .12em; color: var(--g1); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 :where(button, input, select, textarea, [tabindex]):focus-visible {
