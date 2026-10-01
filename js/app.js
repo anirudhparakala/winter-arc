@@ -112,7 +112,7 @@
             <option value="light"${s.theme === 'light' ? ' selected' : ''}>Light</option>
           </select></label>
       </div>
-      <p class="dim" style="font-size:12px;margin:0 0 16px;line-height:1.55">
+      <p class="muted" style="font-size:12px;margin:0 0 16px;line-height:1.55">
         Current arc: <b>${esc(a.start)}</b> → <b>${esc(a.end)}</b> · ${a.total} days ·
         ${a.left} left.${Store.memoryOnly
           ? '<br><b style="color:var(--warn)">This browser is blocking local storage — export a backup before you close the tab.</b>'
