@@ -325,7 +325,7 @@ button:active { transform: translateY(1px); }
 .hmark { width: 4px; height: 14px; flex: none; }
 .hlabel { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; max-width: 100%; }
 .hn { font-weight: 500; max-width: 100%; }
-.htag { font: 10px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--g2); }
+.htag { font: 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--g1); }
 .hrow.is-done .hn { color: var(--g1); }
 .hrow.is-freeze .hn { color: var(--g1); font-style: italic; }
 
@@ -334,7 +334,7 @@ button:active { transform: translateY(1px); }
 .ttext { flex: 1; min-width: 0; word-break: break-word; line-height: 1.35; }
 .trow.is-done .ttext { text-decoration: line-through; color: var(--g1); }
 .tdel { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0;
-        border: 0; border-radius: 0; background: transparent; color: var(--g2); cursor: pointer; }
+        border: 0; border-radius: 0; background: transparent; color: var(--g1); cursor: pointer; }
 .tdel:hover { color: var(--text); }
 .tadd { width: 100%; margin-top: 4px; padding: 12px 0; border: 0; border-top: 1px solid var(--rule);
         border-radius: 0; background: transparent; color: var(--text); outline: none;

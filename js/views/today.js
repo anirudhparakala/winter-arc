@@ -29,7 +29,7 @@
     return `
       <div class="${cls.join(' ')}" data-habit="${esc(h.id)}">
         <button class="check${done ? ' is-done' : ''}${frozen ? ' is-freeze' : ''}"
-                data-act="toggle" aria-pressed="${done}"
+                data-act="toggle" aria-pressed="${done}" aria-keyshortcuts="F"
                 aria-label="${esc(h.name)}${frozen ? ' (frozen)' : ''}">${UI.ICON.check}</button>
         <span class="hix">${pad2(i + 1)}</span>
         <span class="hmark" style="background:${esc(h.color)}"></span>
