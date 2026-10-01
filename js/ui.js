@@ -119,9 +119,10 @@
   /** <img> for a 3D emoji. anim without an -anim file -> static + `is-anim` CSS fallback */
   function emoji(slug, opt) {
     const o = Object.assign({ lit: true, anim: false, size: 20, label: '' }, opt);
+    const has = (m, k) => Object.prototype.hasOwnProperty.call(m, k);
+    if (!has(EMO, slug)) return '';
     const staticSrc = EMO[slug];
-    if (!staticSrc) return '';
-    const real = o.anim && ANIM.has(slug) && EMO_ANIM[slug];
+    const real = o.anim && ANIM.has(slug) && has(EMO_ANIM, slug) && EMO_ANIM[slug];
     const src = real || staticSrc;
     const cls = 'emo' + (o.lit ? '' : ' is-off') + (o.anim && !real ? ' is-anim' : '');
     const alt = o.label ? ` alt="${esc(o.label)}"` : ' alt="" aria-hidden="true"';
@@ -136,32 +137,63 @@
   }
 
   /* ---------------- long-press ---------------- */
-  /** fn(target, event) fires once after a 500 ms touch/pen hold (or on mouse
-   *  right-click). A hold swallows the click that follows it. */
-  function onHold(container, selector, fn) {
+  let holdStyleDone = false;
+  function ensureHoldStyle() {
+    if (holdStyleDone) return;
+    holdStyleDone = true;
     const style = document.createElement('style');
-    container.setAttribute('data-hold', '');
-    style.textContent = `[data-hold] :is(${selector}){-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}`;
+    style.id = 'holdStyle';
+    style.textContent = '[data-hold-t]{-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}';
     document.head.appendChild(style);
+  }
 
-    let timer = null, sx = 0, sy = 0, fired = false, ptype = '';
+  /** fn(target, event) fires once after a 500 ms touch/pen hold (or on mouse
+   *  right-click). A hold swallows the click that follows it.
+   *  Safe to call on every render: listeners are bound once per container, and
+   *  a repeat call for the same selector just replaces its callback. */
+  function onHold(container, selector, fn) {
+    ensureHoldStyle();
+    const mark = el => el.setAttribute('data-hold-t', '');
+    if (container.querySelectorAll) container.querySelectorAll(selector).forEach(mark);
+
+    if (container._holds) { container._holds.set(selector, fn); return; }
+    const holds = container._holds = new Map();
+    holds.set(selector, fn);
+
+    const match = e => {
+      const from = e.target && e.target.closest ? e.target : null;
+      if (!from) return null;
+      for (const [sel, cb] of holds) {
+        const t = from.closest(sel);
+        if (t && container.contains(t)) return { target: t, cb };
+      }
+      return null;
+    };
+
+    let timer = null, sx = 0, sy = 0, fired = false, ptype = '', clearT = null;
     const cancel = () => { clearTimeout(timer); timer = null; };
+    // a stale flag must never eat some later, unrelated tap
+    const armClear = () => {
+      clearTimeout(clearT);
+      clearT = setTimeout(() => { container._suppressClick = false; }, 350);
+    };
 
     container.addEventListener('pointerdown', e => {
       ptype = e.pointerType;
       fired = false;
-      if (e.pointerType === 'mouse') return;
-      const target = e.target.closest && e.target.closest(selector);
-      if (!target || !container.contains(target)) return;
-      sx = e.clientX; sy = e.clientY;
+      container._suppressClick = false;
       cancel();
+      if (e.pointerType === 'mouse') return;
+      const m = match(e);
+      if (!m) return;
+      mark(m.target);
+      sx = e.clientX; sy = e.clientY;
       timer = setTimeout(() => {
         timer = null;
         fired = true;
         container._suppressClick = true;
-        // cleared shortly after pointerup/pointercancel (below) so a stale flag
-        // can't eat some later, unrelated tap
-        fn(target, e);
+        armClear();
+        m.cb(m.target, e);
       }, 500);
     });
     container.addEventListener('pointermove', e => {
@@ -169,13 +201,13 @@
     });
     ['pointerup', 'pointercancel'].forEach(t => container.addEventListener(t, () => {
       cancel();
-      if (fired) setTimeout(() => { container._suppressClick = false; }, 350);
+      if (fired) armClear();
     }));
     container.addEventListener('contextmenu', e => {
-      const target = e.target.closest && e.target.closest(selector);
-      if (!target || !container.contains(target)) return;
+      const m = match(e);
+      if (!m) return;
       e.preventDefault();                  // no native menu on matched elements
-      if (ptype === 'mouse' || ptype === '') fn(target, e);
+      if (ptype === 'mouse' || ptype === '') m.cb(m.target, e);
     });
     container.addEventListener('click', e => {
       if (!container._suppressClick) return;

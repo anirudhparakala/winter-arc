@@ -23,3 +23,99 @@ assert.strictEqual((Charts.segments(0, 0).match(/<i/g) || []).length, 1);
 assert.strictEqual((Charts.segments(40, 40).match(/<i/g) || []).length, 31);
 assert.strictEqual((Charts.segments(5, 3).match(/class="on"/g) || []).length, 3, 'done is clamped to total');
 console.log('ui ok');
+
+/* ---------- segments edge cases ---------- */
+assert.ok((Charts.segments(0, -3).match(/<i/g) || []).length >= 1, 'negative total -> >=1 block');
+assert.ok((Charts.segments(0, NaN).match(/<i/g) || []).length >= 1, 'NaN total -> >=1 block');
+assert.ok((Charts.segments(NaN, 5).match(/<i/g) || []).length === 5, 'NaN done is safe');
+assert.strictEqual((Charts.segments(40, 40).match(/class="on"/g) || []).length, 31, '40/40 lights exactly 31');
+
+/* ---------- ui.js in a stub DOM ---------- */
+function stubEl() {
+  const el = { hidden: false, textContent: '', innerHTML: '', style: {}, children: [], attrs: {},
+    listeners: [],
+    addEventListener(t, f, c) { el.listeners.push([t, f, c]); },
+    setAttribute(k, v) { el.attrs[k] = v; },
+    appendChild(c) { el.children.push(c); return c; },
+    querySelector: () => null, querySelectorAll: () => [],
+    contains: () => true, remove() {}, click() {}, focus() {} };
+  return el;
+}
+function loadUI(sessionStorage) {
+  const c = { console };
+  c.window = c;
+  const els = {};
+  c.document = {
+    documentElement: {}, head: stubEl(), body: stubEl(), activeElement: null,
+    getElementById: id => (els[id] = els[id] || stubEl()),
+    createElement: () => stubEl(),
+    querySelector: () => null, addEventListener() {}
+  };
+  c.sessionStorage = sessionStorage;
+  c.Store = { COLORS: [] };
+  c.matchMedia = () => ({ matches: false });
+  c.navigator = {};
+  c.setTimeout = setTimeout; c.clearTimeout = clearTimeout;
+  c.getComputedStyle = ctx.getComputedStyle;
+  c.ResizeObserver = ctx.ResizeObserver;
+  c.requestAnimationFrame = ctx.requestAnimationFrame;
+  vm.createContext(c);
+  vm.runInContext(SRC, c);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'ui.js'), 'utf8'), c);
+  return c;
+}
+const mem = {};
+const w = loadUI({ getItem: k => mem[k] || null, setItem: (k, v) => { mem[k] = v; } });
+const UI = w.window.UI;
+
+assert.ok(/class="emo is-off"/.test(UI.emoji('fire', { lit: false })), 'unlit -> is-off');
+assert.ok(UI.emoji('fire', { anim: true }).includes('assets/emoji/fire-anim.png'), 'anim path');
+assert.ok(!/is-anim/.test(UI.emoji('fire', { anim: true })), 'real anim has no css fallback class');
+const tr = UI.emoji('trophy', { anim: true });
+assert.ok(tr.includes('assets/emoji/trophy.png') && !tr.includes('-anim.png') && /is-anim/.test(tr), 'trophy fallback');
+assert.strictEqual(UI.emoji('nope'), '');
+assert.strictEqual(UI.emoji('constructor'), '', 'inherited keys are not slugs');
+assert.strictEqual(UI.emoji('toString', { anim: true }), '');
+const lab = UI.emoji('fire', { label: '<b>' });
+assert.ok(lab.includes('alt="&lt;b&gt;"') && !lab.includes('<b>'), 'label escaped');
+assert.ok(UI.streakChip(5).includes('is-hot') && UI.streakChip(5).endsWith('05</span>'));
+assert.ok(!UI.streakChip(2).includes('is-hot'));
+
+// storage that throws must not break celebrateOnce
+const bad = loadUI({ getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } });
+assert.doesNotThrow(() => bad.window.UI.celebrateOnce('x', 'party'));
+
+// celebrateOnce only celebrates once per id
+const before = w.document.body.children.length;
+UI.celebrateOnce('goal:1', 'trophy');
+UI.celebrateOnce('goal:1', 'trophy');
+assert.strictEqual(w.document.body.children.length - before, 1, 'celebrateOnce is once per id');
+
+// onHold: calling it on every render must not stack listeners
+const box = stubEl();
+let calls = 0;
+UI.onHold(box, '.row', () => calls++);
+const n1 = box.listeners.length;
+assert.ok(n1 > 0);
+UI.onHold(box, '.row', () => calls++);
+UI.onHold(box, '.row', () => calls++);
+assert.strictEqual(box.listeners.length, n1, 'same selector: no extra listeners');
+UI.onHold(box, '.other', () => {});
+assert.strictEqual(box.listeners.length, n1, 'new selector reuses the container listeners');
+assert.strictEqual(w.document.head.children.length, 1, 'one shared <style>');
+// the latest fn wins, and fires exactly once per hold
+let latest = 0;
+UI.onHold(box, '.row', () => latest++);
+const tgt = { closest: s => (s === '.row' ? tgt : null), setAttribute() {} };
+const down = box.listeners.find(l => l[0] === 'pointerdown')[1];
+down({ pointerType: 'touch', target: tgt, clientX: 0, clientY: 0 });
+setTimeout(() => {
+  assert.strictEqual(latest, 1, 'latest callback fires once');
+  assert.strictEqual(calls, 0, 'replaced callbacks never fire');
+  assert.strictEqual(box._suppressClick, true);
+  box.listeners.filter(l => l[0] === 'pointerup').forEach(l => l[1]());
+  setTimeout(() => {
+    assert.strictEqual(box._suppressClick, false, 'flag clears shortly after release');
+    console.log('ui helpers ok');
+  }, 420);
+}, 560);
