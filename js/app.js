@@ -17,9 +17,11 @@
   function render() {
     const v = Views[page];
     // keep the reader where they were across a state commit (the window scrolls now)
-    const top = window.scrollY;
+    // (scroll positions belong to a page: arriving from another one starts clean)
+    const same = page === lastPage;
+    const top = same ? window.scrollY : 0;
     const sx = view.querySelector('.scroll-x');
-    const left = sx ? sx.scrollLeft : 0;
+    const left = same && sx ? sx.scrollLeft : 0;
 
     document.title = v.title.charAt(0) + v.title.slice(1).toLowerCase() + ' · Winter Arc';
     view.innerHTML = '';
@@ -41,7 +43,8 @@
       b.classList.toggle('is-active', b.dataset.page === page));
 
     if (pendingFocus) {
-      const t = view.querySelector(pendingFocus);
+      let t = null;
+      try { t = view.querySelector(pendingFocus); } catch (e) { /* a stale selector must not break the render */ }
       pendingFocus = null;
       if (t) { t.focus(); if (t.setSelectionRange) t.setSelectionRange(99, 99); }
     }

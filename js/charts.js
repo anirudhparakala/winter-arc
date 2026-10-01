@@ -93,7 +93,7 @@
       const step = Math.max(1, Math.ceil(n / (W < 500 ? 4 : 6)));
       let xlab = '';
       for (let i = 0; i < n; i += step) {
-        const anchor = i === 0 ? 'start' : (i > n - step ? 'end' : 'middle');
+        const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
         xlab += `<text class="axis-lbl" x="${X(i).toFixed(1)}" y="${H - 6}"
                   text-anchor="${anchor}">${esc(c.labels[i] || '')}</text>`;
       }

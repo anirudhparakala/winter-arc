@@ -65,10 +65,10 @@
   Views.insights = {
     title: 'INSIGHTS',
     render(el) {
-      // a deleted habit can't stay selected
-      const scopeHabit = Store.state.habits.find(h => h.id === scope);
-      if (!scopeHabit) scope = 'overall';
+      // the select only lists active habits: a deleted or archived one falls back to Overall
       const habits = Store.activeHabits();
+      const scopeHabit = habits.find(h => h.id === scope);
+      if (!scopeHabit) scope = 'overall';
       const keys = rangeKeys();
       const raw = keys.map(scoreOn);
       const vals = scope === 'overall' ? raw.map(v => v == null ? 0 : v) : smooth(raw, 7);
@@ -117,7 +117,7 @@
 
       // 10 blocks per month, lit bottom-up by rounded tenths, same build as Tasks' week columns
       const monthCols = months.map(mo => {
-        const lit = mo.score == null ? 0 : Math.round(mo.score / 10);
+        const lit = mo.score == null ? 0 : mo.score > 0 ? Math.max(1, Math.round(mo.score / 10)) : 0;   // any activity lights a block
         let blocks = '';
         for (let b = 0; b < 10; b++) blocks += b < lit ? '<i class="on"></i>' : '<i></i>';
         const text = `${mo.label} ${mo.year}: ${mo.score == null ? 'not started' : mo.score + '%'}`;

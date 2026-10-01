@@ -45,6 +45,18 @@ assert.ok(/fill-opacity="\.1"/.test(areaHtml), 'area fill is 10% opacity');
 assert.ok(!/stroke-width="2"/.test(areaHtml), 'line is 1.5px, not 2px');
 assert.ok(!areaHtml.includes('--surface-1'), 'no legacy token in the hover dot');
 
+/* ---------- lines(): only the final label anchors to the end ---------- */
+function anchorsFor(n) {
+  const labels = Array.from({ length: n }, (_, i) => 'L' + i);
+  const html = lineHtml({ labels, yMax: 100, series: [{ name: 's', color: 'red', values: labels.map(() => 5) }] });
+  return [...html.matchAll(/text-anchor="(\w+)">(L\d+)</g)].map(m => [m[2], m[1]]);
+}
+const a14 = anchorsFor(14);   // labels at 0,3,..,12: 13 is the last point, so nothing may end-anchor
+assert.deepStrictEqual(a14.filter(x => x[1] === 'end'), [], 'a non-final label never anchors end');
+assert.deepStrictEqual(a14[0], ['L0', 'start']);
+const a13 = anchorsFor(13);   // 12 is the last point
+assert.deepStrictEqual(a13.filter(x => x[1] === 'end').map(x => x[0]), ['L12'], 'the final label anchors end');
+
 /* ---------- ui.js in a stub DOM ---------- */
 function stubEl() {
   const el = { hidden: false, textContent: '', innerHTML: '', style: {}, children: [], attrs: {},

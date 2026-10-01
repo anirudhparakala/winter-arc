@@ -167,8 +167,8 @@
     const inp = box.querySelector('#addT');
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter' && inp.value.trim()) {
+        App.focusAfterRender('#todayTasks #addT');   // queued before the commit: it re-renders synchronously
         Store.addTask(key, inp.value);
-        App.focusAfterRender('#todayTasks #addT');
       }
     });
   }

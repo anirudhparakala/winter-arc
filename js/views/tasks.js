@@ -164,7 +164,11 @@
 
       el.querySelector('#prevW').onclick = () => { weekCursor = D.add(start, -7); App.render(); };
       el.querySelector('#nextW').onclick = () => { weekCursor = D.add(start, 7);  App.render(); };
-      el.querySelector('#thisW').onclick = () => { weekCursor = weekStartOf(D.today()); App.render(); };
+      el.querySelector('#thisW').onclick = () => {
+        weekCursor = weekStartOf(D.today());
+        scrolledFor = null;            // re-centre the carousel on today even if this week is already shown
+        App.render();
+      };
       if (isThisWeek) el.querySelector('#thisW').classList.add('btn-primary');
 
       const board = el.querySelector('#board');

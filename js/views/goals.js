@@ -248,14 +248,15 @@
           if (!g) return;
           if (b.dataset.act === 'edit') goalModal(g);
           else if (b.dataset.act === 'pin') {
-            App.focusAfterRender(`#${scope.id} [data-goal="${id}"] [data-act="pin"]`);
+            App.focusAfterRender(`#${scope.id} [data-goal="${CSS.escape(id)}"] [data-act="pin"]`);
             Store.commit(() => { g.pinned = !g.pinned; });
           } else if (b.dataset.act === 'ms') {
             const before = g.status;
             UI.haptic();
-            App.focusAfterRender(`#${scope.id} [data-goal="${id}"] [data-ms="${b.dataset.ms}"]`);
+            App.focusAfterRender(`#${scope.id} [data-goal="${CSS.escape(id)}"] [data-ms="${CSS.escape(b.dataset.ms)}"]`);
             Store.commit(() => {
               const mm = g.milestones.find(x => x.id === b.dataset.ms);
+              if (!mm) return;
               mm.done = !mm.done;
               if (g.milestones.every(x => x.done)) g.status = 'achieved';
               else if (g.status === 'achieved') g.status = 'in-progress';
