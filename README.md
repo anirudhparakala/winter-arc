@@ -6,7 +6,9 @@ A black, offline-first tracker for a **90-day arc**: daily habits on a month gri
 a weekly task board with a mindset tracker, goals across ten areas of life,
 and an insights page that shows whether you're actually holding the line.
 
-No accounts, no sign-up, no server to run. Everything lives in your own browser.
+No accounts, no sign-up, no server to run. Everything lives in your own browser —
+and, if you want the same data on your phone and laptop, you can optionally
+[sync it to your own free Supabase project](#cloud-sync).
 
 **The look ("Instrument"):** pure black with a single icy-blue accent, dot-matrix
 numerals for the big figures, a LED-style habit matrix, and Microsoft's Fluent 3D
@@ -21,7 +23,8 @@ Just open **[anirudhparakala.github.io/winter-arc](https://anirudhparakala.githu
 — that's it, the app is right there. A few things worth knowing:
 
 - **Your data is separate from theirs.** Nothing is shared between people who open
-  this link — what you tick is stored only in your own browser, on your own device.
+  this link — what you tick is stored only in your own browser, on your own device
+  (unless you set up [Cloud sync](#cloud-sync) with your own project).
 - **Install it as a real app** (recommended): open the link in Chrome or Edge, then
   click the **install icon** in the address bar (or ⋯ menu → *Apps* → *Install this
   site as an app*). You get your own window, your own icon, and it works offline.
@@ -112,19 +115,75 @@ the goal achieved on its own. Pin a goal to put it in **Top priorities**.
 
 ## Your data
 
-Everything is stored in your own browser (`localStorage`) under the key
-`winterArc.v1`. Nothing is ever sent anywhere.
+The app is **local first**: everything is stored in your own browser (`localStorage`)
+under the key `winterArc.v1`, and it works fully offline. By default nothing is ever
+sent anywhere. Only if you set up [Cloud sync](#cloud-sync) and sign in does the app
+also copy your data to **your own Supabase project** (nobody else's server).
 
-That also means it's tied to **that browser on that machine**. To move it, or to keep
-a safety copy:
+Without sync, your data is tied to **that browser on that machine**. To move it, or to
+keep a safety copy:
 
 - **Settings (⚙, top right) → Export backup** — downloads a `.json` file.
 - **Settings → Import backup** — loads one back, on any device.
 
-Worth exporting now and then. Clearing your browser's site data will wipe it.
+Worth exporting now and then — even with sync on. Clearing your browser's site data will
+wipe the local copy, and a backup file is the one thing that no sync mistake can touch.
 
 If a saved copy ever can't be read, the app starts fresh but first keeps the unreadable
 text under the key `winterArc.v1.corrupt` in the browser's storage, so it can be recovered.
+
+---
+
+## Cloud sync
+
+Optional. It keeps the same habits, tasks, goals and settings on every device you sign in
+to (say an iPhone Home Screen app and a laptop). Tick a habit on one and it shows up on
+the other within seconds; edit on both while one is offline and nothing is lost — the two
+sets of changes are merged. The app still works offline and still keeps its working copy
+in `localStorage`; sync is a layer on top. There is **no Supabase library** — the app talks
+to Supabase with plain `fetch`. The theme (dark/light) is per device and never synced.
+
+### One-time setup (about 5 minutes, free)
+
+1. Supabase dashboard → **New project**.
+2. **SQL editor** → paste and run [`supabase/schema.sql`](supabase/schema.sql). It creates
+   one table (`user_state`, one row per user) with row-level security, so each signed-in
+   user can read and write only their own row.
+3. **Authentication → Users → Add user** — your email and a password, auto-confirm.
+4. **Authentication → Sign In / Providers** — turn **off** "Allow new users to sign up",
+   so nobody else can create an account in your project.
+5. **Project Settings → API** — copy the **Project URL** and the **anon public** key into
+   [`js/sync-config.js`](js/sync-config.js). Both are public by design (row-level security
+   is what protects the data). **Never use the `service_role` key** — it bypasses all
+   security and must never go into a web page.
+6. Push the site (see *Updating the live site*), then on **each device**: open the app →
+   **Settings → Cloud sync** → sign in with that email and password. Sign-in is per device;
+   the password is never stored, only a session token that refreshes itself.
+
+### Using it
+
+- The little dot on the **gear** shows the state once you are signed in: lit = synced,
+  hollow = waiting to sync (offline or retrying), amber = needs attention.
+- **Settings → Cloud sync → Sync now** syncs immediately; **Sign out** signs this device
+  out (its local data stays). Sync also runs on app start, when you come back to the tab or
+  go back online, every minute while the app is visible, and a few seconds after you edit.
+- The first time a device connects, if **both** it and the cloud already hold data, you are
+  asked once: **Merge both** (recommended), **Use the cloud copy**, or **Use this device**.
+- **Reset everything** while signed in also erases your cloud copy, and your other devices
+  will be erased on their next sync. Signed out, it only affects this device.
+- Importing a backup is just another edit — it syncs like any other change.
+
+### Good to know
+
+- Free Supabase projects **pause after about 7 days of no use**. Open the Supabase
+  dashboard and press resume — your data is kept. Until then the app shows it can't reach
+  Supabase and keeps working locally; changes sync once the project is back.
+- Two devices changing the exact same thing at the same second resolve to "the device that
+  is syncing wins". A record deleted on one device but edited on another is kept.
+- The data in your Supabase project is readable by you (the project owner) — there is no
+  end-to-end encryption.
+- A single-file build (`dist/winter-arc.html`) contains whatever is in `js/sync-config.js`
+  at build time. The committed one is built with sync switched off.
 
 ---
 
@@ -134,6 +193,10 @@ text under the key `winterArc.v1.corrupt` in the browser's storage, so it can be
 index.html              app shell and page chrome
 css/style.css           design tokens + every component
 js/store.js             state, persistence, date maths, streaks and rates
+js/merge.js             pure three-way merge used by sync
+js/sync.js              Supabase sync engine (plain fetch, no library)
+js/sync-config.js       your Supabase URL + anon key (empty = sync off)
+supabase/schema.sql     the one table + row-level security, run once in Supabase
 js/charts.js            SVG charts (segmented bars, sparkline, area, multi-line)
 js/ui.js                icons, emoji, modal, toast
 js/views/*.js           one file per page
@@ -146,7 +209,8 @@ icons/                  PNG app icons
 tools/build.js          bundles everything into dist/winter-arc.html
 tools/make-icons.js     regenerates the PNG app icons
 tools/fetch-assets.js   downloads the fonts + emoji into assets/ (npm run assets)
-tools/test-*.js         tests: tracking maths, assets, UI helpers, build output
+tools/test-*.js         tests: tracking maths, assets, UI helpers, build output,
+                        merge (test-merge.js) and the sync engine (test-sync.js)
 docs/superpowers/       design spec and implementation plans for the redesign
 ```
 
