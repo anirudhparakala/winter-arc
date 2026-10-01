@@ -414,6 +414,66 @@ test('a corrupt save falls back to defaults instead of throwing', () => {
   assert.ok(ctx.Store.state.habits.length > 0);
 });
 
+/** a store booted over a stubbed localStorage that holds `kv` */
+function storeOver(kv) {
+  const ctx = { console: { log() {}, warn() {} },
+    localStorage: { getItem: k => (k in kv ? kv[k] : null), setItem: (k, v) => { kv[k] = String(v); } } };
+  ctx.window = ctx; vm.createContext(ctx); vm.runInContext(SRC, ctx);
+  return ctx;
+}
+test('invalid JSON is backed up to winterArc.v1.corrupt before the defaults take over', () => {
+  const kv = { 'winterArc.v1': '{not json' };
+  const ctx = storeOver(kv);
+  assert.ok(ctx.Store.state.habits.length > 0, 'still boots with defaults');
+  assert.strictEqual(kv['winterArc.v1.corrupt'], '{not json');
+  ctx.Store.commit(() => {});     // the next save overwrites the live key...
+  assert.notStrictEqual(kv['winterArc.v1'], '{not json');
+  assert.strictEqual(kv['winterArc.v1.corrupt'], '{not json', '...but the backup survives');
+});
+test('a save whose migration throws is backed up too', () => {
+  const raw = JSON.stringify({ version: 1, habits: [null] });
+  const kv = { 'winterArc.v1': raw };
+  const ctx = storeOver(kv);
+  assert.ok(ctx.Store.state.habits.length > 0);
+  assert.strictEqual(kv['winterArc.v1.corrupt'], raw);
+});
+test('a healthy save writes no backup, and a blocked backup write cannot break boot', () => {
+  const kv = { 'winterArc.v1': JSON.stringify(dailyFixture({})) };
+  storeOver(kv);
+  assert.ok(!('winterArc.v1.corrupt' in kv));
+  const ctx = { console: { log() {}, warn() {} },
+    localStorage: { getItem: k => (k === 'winterArc.v1' ? '{bad' : null), setItem() { throw new Error('quota'); } } };
+  ctx.window = ctx; vm.createContext(ctx); vm.runInContext(SRC, ctx);
+  assert.ok(ctx.Store.state.habits.length > 0);
+});
+test('an identical existing backup is left untouched', () => {
+  let writes = 0;
+  const kv = { 'winterArc.v1': '{bad', 'winterArc.v1.corrupt': '{bad' };
+  const ctx = { console: { log() {}, warn() {} },
+    localStorage: { getItem: k => (k in kv ? kv[k] : null), setItem: (k, v) => { writes++; kv[k] = v; } } };
+  ctx.window = ctx; vm.createContext(ctx); vm.runInContext(SRC, ctx);
+  assert.strictEqual(writes, 0);
+});
+
+console.log('\nhabit colours');
+test('loaded habit colours must be #rrggbb; anything else falls back to the palette', () => {
+  const bad = ['red', 'url(x)', '#fff', 'x;background:red', '#12345g', 5, null, '#3987e5;x'];
+  const fx = dailyFixture({});
+  fx.habits = bad.map((c, i) => ({ id: 'h' + i, name: 'H' + i, color: c, cadence: 'daily', target: 1, archived: false, createdAt: ago(5) }));
+  fx.habits.push({ id: 'ok', name: 'ok', color: '#AbCdEf', cadence: 'daily', target: 1, archived: false, createdAt: ago(5) });
+  const { Store } = freshStore(fx);
+  const hs = Store.state.habits;
+  hs.slice(0, bad.length).forEach((h, i) => assert.strictEqual(h.color, Store.COLORS[i % Store.COLORS.length], 'habit ' + i));
+  assert.strictEqual(hs[bad.length].color, '#AbCdEf', 'a valid colour is kept as-is');
+});
+test('imported habit colours are validated too', () => {
+  const { Store } = freshStore();
+  const fx = dailyFixture({});
+  fx.habits[0].color = '"><img src=x onerror=alert(1)>';
+  Store.importJSON(JSON.stringify(fx));
+  assert.ok(/^#[0-9a-fA-F]{6}$/.test(Store.state.habits[0].color));
+});
+
 test('fresh install seeds the 7 default habits', () => {
   const ctx = freshStore();
   assert.deepStrictEqual(Array.from(ctx.Store.state.habits, h => h.name),

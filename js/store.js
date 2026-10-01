@@ -72,6 +72,7 @@
   const COLORS = ['#3987e5','#d95926','#199e70','#c98500',
                   '#d55181','#008300','#9085e9','#e66767'];
 
+  const HEX6 = /^#[0-9a-fA-F]{6}$/;
   const KEY = 'winterArc.v1';
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
@@ -114,6 +115,13 @@
   let memoryOnly = false;        // true when localStorage is unavailable
   const listeners = [];
 
+  /** keep the unreadable save under KEY.corrupt (blocked/full storage is fine to ignore) */
+  function backupCorrupt(raw) {
+    try {
+      if (localStorage.getItem(KEY + '.corrupt') !== raw) localStorage.setItem(KEY + '.corrupt', raw);
+    } catch (e) { /* storage unavailable: nothing more we can do */ }
+  }
+
   function load() {
     let raw = null;
     try { raw = localStorage.getItem(KEY); }
@@ -124,6 +132,7 @@
       return migrate(parsed);
     } catch (e) {
       console.warn('Winter Arc: corrupt save, starting fresh.', e);
+      backupCorrupt(raw);      // the next commit overwrites KEY — keep the raw text recoverable
       return defaultState();
     }
   }
@@ -165,10 +174,11 @@
     out.mindset = s.mindset || {};
     migrateArcLength(out, s.settings || {});
     if (typeof out.freezeTokens !== 'number') out.freezeTokens = base.freezeTokens;
-    out.habits.forEach(h => {
+    out.habits.forEach((h, i) => {
       if (!h.cadence) h.cadence = 'daily';
       if (!h.target) h.target = 1;
-      if (!h.color) h.color = COLORS[0];
+      // colours end up in style="" attributes: only a plain #rrggbb is safe
+      if (!HEX6.test(h.color)) h.color = COLORS[i % COLORS.length];
       if (!h.createdAt) h.createdAt = out.settings.arcStart;
     });
     return out;
