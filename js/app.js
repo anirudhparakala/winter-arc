@@ -7,33 +7,38 @@
   const PAGES = ['today', 'habits', 'tasks', 'goals', 'insights'];
   const view = document.getElementById('view');
   const nav = document.getElementById('nav');
-  const dots = document.getElementById('dots');
-  const titleEl = document.getElementById('pageTitle');
+  const clockEl = document.getElementById('clock');
 
   let page = 'today';
+  let lastPage = null;
   let pendingFocus = null;
 
   /* ---------------- render ---------------- */
   function render() {
     const v = Views[page];
-    // keep the reader where they were across a state commit
-    const top = view.scrollTop;
+    // keep the reader where they were across a state commit (the window scrolls now)
+    const top = window.scrollY;
     const sx = view.querySelector('.scroll-x');
     const left = sx ? sx.scrollLeft : 0;
 
-    titleEl.textContent = v.title;
     document.title = v.title.charAt(0) + v.title.slice(1).toLowerCase() + ' · Winter Arc';
     view.innerHTML = '';
     v.render(view);
 
-    view.scrollTop = top;
+    // slide the new page in — only when the page changed, not on every state commit
+    if (page !== lastPage) {
+      view.classList.remove('enter');
+      void view.offsetWidth;
+      view.classList.add('enter');
+      lastPage = page;
+    }
+
+    if (top) window.scrollTo(0, top);
     const sx2 = view.querySelector('.scroll-x');
     if (sx2 && left) sx2.scrollLeft = left;
 
     nav.querySelectorAll('.nav-btn').forEach(b =>
       b.classList.toggle('is-active', b.dataset.page === page));
-    dots.querySelectorAll('.dot').forEach(d =>
-      d.classList.toggle('is-active', d.dataset.page === page));
 
     if (pendingFocus) {
       const t = view.querySelector(pendingFocus);
@@ -46,17 +51,14 @@
     if (!PAGES.includes(p) || p === page) return;
     page = p;
     location.hash = p;
-    view.scrollTop = 0;
+    window.scrollTo(0, 0);
     render();
   }
 
   /* ---------------- chrome ---------------- */
-  dots.innerHTML = PAGES.map(p =>
-    `<button class="dot" data-page="${p}" role="tab" aria-label="${p}"></button>`).join('');
-  dots.addEventListener('click', e => {
-    const d = e.target.closest('[data-page]');
-    if (d) go(d.dataset.page);
-  });
+  const tick = () => { clockEl.textContent = new Date().toTimeString().slice(0, 5); };
+  tick(); setInterval(tick, 15000);
+
   nav.addEventListener('click', e => {
     const b = e.target.closest('[data-page]');
     if (b) go(b.dataset.page);
