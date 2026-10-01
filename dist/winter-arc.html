@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Winter Arc</title>
-<meta name="description" content="Track habits, tasks and 1-year goals through your winter arc.">
+<meta name="description" content="Track habits, tasks and goals through your winter arc.">
 <meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -118,7 +118,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
   border-bottom: 1px solid var(--rule); padding-bottom: 12px;
 }
-.logo { font-size: 20px; letter-spacing: .04em; white-space: nowrap; }
+.logo { font-size: 34px; line-height: 1; letter-spacing: .04em; white-space: nowrap; }
 .clock { font-weight: 700; font-size: 20px; color: var(--g1); }
 .strip-r { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 
@@ -155,12 +155,17 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 .scroll-x::-webkit-scrollbar-thumb { background: var(--rule-2); border-radius: 0; }
 .scroll-x::-webkit-scrollbar-thumb:hover { background: var(--g2); }
 
+/* narrow desktop / tablet: the 34px title + nav + clock no longer fit one row */
+@media (max-width: 900px) {
+  .logo { font-size: 26px; }
+  .clock { display: none; }
+}
+
 /* ---------- phone shell ---------- */
 @media (max-width: 760px) {
   body { padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
                   calc(84px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   .strip { display: flex; justify-content: space-between; }
-  .clock { display: none; }
   /* phone hit areas: every shared control is >= 44px tall */
   .icon-btn, .icon-btn.sm { width: 44px; height: 44px; }
   .btn, .btn-sm, .seg button { min-height: 44px; }
@@ -831,7 +836,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       settings: {
         name: 'Winter Arc',
         arcStart: start,
-        arcMonths: 12,          // 1-year arc
+        arcDays: 90,            // arc length in days (integer >= 1)
         weekStart: 0,           // 0 = Sunday
         theme: 'dark'
       },
@@ -876,6 +881,26 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     }
   }
 
+  const DEFAULT_ARC_DAYS = 90;
+  const validDays = n => Number.isInteger(n) && n >= 1;
+
+  /** Old saves stored the arc as `arcMonths`. Convert to the exact number of days that
+      month-based arc covered, drop the old field, and fall back to 90 for anything invalid. */
+  function migrateArcLength(out, raw) {
+    const st = out.settings;
+    if (!validDays(raw.arcDays)) {
+      let days = DEFAULT_ARC_DAYS;
+      if (validDays(raw.arcMonths)) {
+        const d = D.parse(st.arcStart);
+        const end = new Date(d.getFullYear(), d.getMonth() + raw.arcMonths, d.getDate());
+        const n = D.diff(st.arcStart, D.key(D.add(end, -1))) + 1;
+        if (validDays(n)) days = n;
+      }
+      st.arcDays = days;
+    }
+    delete st.arcMonths;
+  }
+
   function migrate(s) {
     const base = defaultState();
     const out = Object.assign({}, base, s);
@@ -885,6 +910,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     out.logs    = s.logs    || {};
     out.tasks   = s.tasks   || {};
     out.mindset = s.mindset || {};
+    migrateArcLength(out, s.settings || {});
     if (typeof out.freezeTokens !== 'number') out.freezeTokens = base.freezeTokens;
     out.habits.forEach(h => {
       if (!h.cadence) h.cadence = 'daily';
@@ -1111,13 +1137,12 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     return D.diff(D.todayKey(), g.deadline);
   }
 
-  /* ---------------- arc (the 1-year window) ---------------- */
+  /* ---------------- arc (the window every goal and rate lives in) ---------------- */
   function arc() {
     const st = state.settings.arcStart;
-    const d = D.parse(st);
-    const end = new Date(d.getFullYear(), d.getMonth() + state.settings.arcMonths, d.getDate());
-    const endK = D.key(D.add(end, -1));
-    const total = Math.max(1, D.diff(st, endK) + 1);
+    const days = validDays(state.settings.arcDays) ? state.settings.arcDays : DEFAULT_ARC_DAYS;
+    const endK = D.addKey(st, days - 1);
+    const total = days;
     const elapsed = Math.min(total, Math.max(0, D.diff(st, D.todayKey()) + 1));
     return { start: st, end: endK, total, elapsed,
              left: Math.max(0, total - elapsed),
@@ -1701,7 +1726,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         <section class="hero">
           <div class="pct dotnum">${pct}<sup>%</sup></div>
           <div>
-            <div class="lb">${esc(D.longDate(d))} — day ${pad3(a.elapsed)} of ${a.total}</div>
+            <div class="lb">${esc(D.longDate(d))} — day ${pad3(a.elapsed)} of ${pad3(a.total)}</div>
             ${Charts.segments(tally.done, tally.total)}
             <div class="spec">
               <div><span class="lb">Done</span><b>${tally.done}/${tally.total}</b></div>
@@ -2353,7 +2378,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 </script>
 <script>
 /* ============================================================
-   views/goals.js — the 1-year arc and the goals inside it
+   views/goals.js — the arc and the goals inside it
    ============================================================ */
 (function () {
   'use strict';
@@ -2371,7 +2396,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     const areaOpts = Store.AREAS.map(x =>
       `<option value="${x.id}"${x.id === g.area ? ' selected' : ''}>${x.icon} ${esc(x.name)}</option>`).join('');
 
-    UI.modal(existing ? 'Edit goal' : 'New 1-year goal', `
+    UI.modal(existing ? 'Edit goal' : 'New goal', `
       <label class="field"><span>Goal</span>
         <input class="input" id="gTitle" maxlength="90" value="${esc(g.title)}"
                placeholder="e.g. Get consistently fit"></label>
@@ -2970,8 +2995,8 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       <div class="field-row">
         <label class="field"><span>Arc starts</span>
           <input class="input" type="date" id="sStart" value="${esc(s.arcStart)}"></label>
-        <label class="field"><span>Arc length (months)</span>
-          <input class="input" type="number" id="sMonths" min="1" max="60" value="${s.arcMonths}"></label>
+        <label class="field"><span>Arc length (days)</span>
+          <input class="input" type="number" id="sDays" min="1" max="3650" step="1" value="${s.arcDays}"></label>
       </div>
       <div class="field-row">
         <label class="field"><span>Week starts on</span>
@@ -3008,7 +3033,8 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         Store.commit(st => {
           st.settings.name = m.querySelector('#sName').value.trim() || 'Winter Arc';
           st.settings.arcStart = m.querySelector('#sStart').value || st.settings.arcStart;
-          st.settings.arcMonths = Math.max(1, parseInt(m.querySelector('#sMonths').value, 10) || 12);
+          const days = parseInt(m.querySelector('#sDays').value, 10);
+          st.settings.arcDays = Number.isInteger(days) && days >= 1 ? Math.min(3650, days) : 90;
           st.settings.weekStart = parseInt(m.querySelector('#sWeek').value, 10);
           st.settings.theme = m.querySelector('#sTheme').value;
         });
