@@ -46,7 +46,7 @@
       const cad = m.querySelector('#hCad');
       const tgt = m.querySelector('#tgtWrap');
       cad.value = h.cadence;
-      const sync = () => { tgt.style.visibility = cad.value === 'daily' ? 'hidden' : 'visible'; };
+      const sync = () => { tgt.hidden = cad.value === 'daily'; };
       cad.onchange = sync; sync();
 
       m.querySelector('#hSave').onclick = () => {

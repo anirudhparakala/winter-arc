@@ -459,11 +459,11 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 .dpct { font-size: 24px; line-height: 1; }
 .dsec { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
-.drow { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-top: 1px solid var(--rule); }
+.drow { display: flex; align-items: flex-start; gap: 6px; padding: 7px 0; border-top: 1px solid var(--rule); }
 .drow .check { margin-top: 1px; }
 .dtext { flex: 1; min-width: 0; font-size: 13px; line-height: 1.35; word-break: break-word; }
 .drow.is-done .dtext { text-decoration: line-through; color: var(--g1); }
-.ddel { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0;
+.ddel { display: inline-grid; place-items: center; flex: none; width: 20px; height: 24px; padding: 0;
         border: 0; border-radius: 0; background: transparent; color: var(--g1); cursor: pointer; }
 .ddel:hover { color: var(--text); }
 .dadd { width: 100%; padding: 9px 0; border: 0; border-top: 1px solid var(--rule); border-radius: 0;
@@ -568,7 +568,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   .section-label .gclear { margin: -12px 0; }
   .goal-card { padding: 16px 14px; }
   .gact { gap: 4px; margin: -8px -8px 0 0; }
-  .gmeta .gnum { min-height: 44px; font-size: 16px; }
+  .gmeta .gnum { width: 120px; min-height: 44px; font-size: 16px; }
   .ms-item { min-height: 48px; }
   .ms-item .check::before { content: ""; position: absolute; inset: -14px; }
 }
@@ -670,8 +670,14 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   .modal-root { align-items: end; padding: 0; }
   .modal {
     width: 100%; max-height: 90vh; border-width: 1px 0 0;
-    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    padding: 20px 16px 0;
     animation: sheet .18s var(--snap);
+  }
+  /* the sheet scrolls on a short phone: keep Save / Cancel reachable */
+  .modal-actions {
+    position: sticky; bottom: 0; margin: 20px -16px 0;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+    background: var(--bg); border-top: 1px solid var(--rule);
   }
   .toast { bottom: calc(72px + env(safe-area-inset-bottom)); max-width: calc(100% - 32px); }
   .input, .select, .textarea { font-size: 16px; }

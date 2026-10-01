@@ -72,7 +72,7 @@ rely on a link staying up.
 
 | Page | What it's for |
 |---|---|
-| **Today** | The daily check-in: completion ring, every habit, today's tasks, freeze tokens. |
+| **Today** | The daily check-in: today's completion as a big dot-matrix percentage, every habit, today's tasks, freeze tokens. |
 | **Habits** | The month matrix — one row per habit, one cell per day. The heart of the app. |
 | **Tasks** | A week at a time: tasks per day, plus Energy / Focus / Motivation tracking. |
 | **Goals** | Your 1-year goals, grouped by area of life, with milestones and days left. |
@@ -129,7 +129,7 @@ Worth exporting now and then. Clearing your browser's site data will wipe it.
 index.html              app shell and page chrome
 css/style.css           design tokens + every component
 js/store.js             state, persistence, date maths, streaks and rates
-js/charts.js            SVG charts (ring, sparkline, area, multi-line)
+js/charts.js            SVG charts (segmented bars, sparkline, area, multi-line)
 js/ui.js                icons, emoji, modal, toast
 js/views/*.js           one file per page
 assets/fonts/           vendored fonts (Doto, Space Grotesk, Space Mono)
