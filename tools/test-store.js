@@ -274,5 +274,13 @@ test('a corrupt save falls back to defaults instead of throwing', () => {
   assert.ok(ctx.Store.state.habits.length > 0);
 });
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
+test('fresh install seeds the 7 default habits', () => {
+  const ctx = freshStore();
+  assert.deepStrictEqual(Array.from(ctx.Store.state.habits, h => h.name),
+    ['Wake up at 5AM','Gym','Read 10 pages','Eat healthy','Plan next day','Cold shower','No social media']);
+  const gym = ctx.Store.state.habits.find(h => h.name === 'Gym');
+  assert.strictEqual(gym.cadence, 'weekly'); assert.strictEqual(gym.target, 5);
+});
+
+console.log(`\n${pass} passed,${fail} failed\n`);
 process.exit(fail ? 1 : 0);

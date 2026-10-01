@@ -1,18 +1,23 @@
 # Winter Arc
 
-**🔗 Live app: [abhiman-06.github.io/winter-arc](https://abhiman-06.github.io/winter-arc/)**
+**🔗 Live app: [anirudhparakala.github.io/winter-arc](https://anirudhparakala.github.io/winter-arc/)**
 
-A dark, offline-first tracker for a **one-year arc**: daily habits on a month grid,
+A black, offline-first tracker for a **one-year arc**: daily habits on a month grid,
 a weekly task board with a mindset tracker, 1-year goals across ten areas of life,
 and an insights page that shows whether you're actually holding the line.
 
 No accounts, no sign-up, no server to run. Everything lives in your own browser.
 
+**The look ("Instrument"):** pure black with a single icy-blue accent, dot-matrix
+numerals for the big figures, a LED-style habit matrix, and Microsoft's Fluent 3D
+emoji (animated for the fire, snowflake and party). Fonts and emoji ship inside the
+repo, so it looks the same offline.
+
 ---
 
 ## If someone sent you this link
 
-Just open **[abhiman-06.github.io/winter-arc](https://abhiman-06.github.io/winter-arc/)**
+Just open **[anirudhparakala.github.io/winter-arc](https://anirudhparakala.github.io/winter-arc/)**
 — that's it, the app is right there. A few things worth knowing:
 
 - **Your data is separate from theirs.** Nothing is shared between people who open
@@ -31,7 +36,7 @@ Everything past this point is for whoever is running or changing the project.
 ## Four ways to run it
 
 ### 1. Just open the live link
-**[abhiman-06.github.io/winter-arc](https://abhiman-06.github.io/winter-arc/)** —
+**[anirudhparakala.github.io/winter-arc](https://anirudhparakala.github.io/winter-arc/)** —
 nothing to install, works on any device with a browser. This is what to send people.
 
 ### 2. As a website on your own PC
@@ -47,8 +52,8 @@ own window, its own icon, and works offline.
 ```
 npm run build
 ```
-This writes **`dist/winter-arc.html`** — a single ~125 KB file with all the CSS,
-JavaScript and icons inlined. Send it over WhatsApp, email, a USB stick, anything.
+This writes **`dist/winter-arc.html`** — a single ~2 MB file with all the CSS,
+JavaScript, fonts, emoji and icons inlined. Send it over WhatsApp, email, a USB stick, anything.
 Whoever gets it double-clicks the file and the app runs — no install, no internet,
 no Node, no GitHub. Useful if your friend has spotty internet or you'd rather not
 rely on a link staying up.
@@ -68,7 +73,7 @@ rely on a link staying up.
 | Page | What it's for |
 |---|---|
 | **Today** | The daily check-in: completion ring, every habit, today's tasks, freeze tokens. |
-| **Habits** | The month grid — one row per habit, one circle per day. The heart of the app. |
+| **Habits** | The month matrix — one row per habit, one cell per day. The heart of the app. |
 | **Tasks** | A week at a time: tasks per day, plus Energy / Focus / Motivation tracking. |
 | **Goals** | Your 1-year goals, grouped by area of life, with milestones and days left. |
 | **Insights** | Consistency over time, habit leaderboard, streaks, and a month-by-month bar. |
@@ -84,7 +89,7 @@ Press **1–5** to jump between pages. Press **N** on Habits or Goals to add one
 - *Weekly* — a target like "Gym 5× per week". It counts as met once you hit 5.
 - *Monthly* — same idea over a calendar month.
 
-On the Habits grid, **click a circle** to mark the day, **right-click** it to spend
+On the Habits matrix, **click a cell** to mark the day, **right-click** it to spend
 a freeze token, and **click a habit's name** to edit or delete it.
 
 **Freeze tokens** protect a streak on a day you genuinely couldn't show up. The
@@ -125,40 +130,63 @@ index.html              app shell and page chrome
 css/style.css           design tokens + every component
 js/store.js             state, persistence, date maths, streaks and rates
 js/charts.js            SVG charts (ring, sparkline, area, multi-line)
-js/ui.js                icons, modal, toast
+js/ui.js                icons, emoji, modal, toast
 js/views/*.js           one file per page
+assets/fonts/           vendored fonts (Doto, Space Grotesk, Space Mono)
+assets/emoji/           vendored Fluent emoji (static + animated)
+assets/LICENSES.md      licences for the vendored fonts and emoji
 sw.js                   service worker — offline + installable
 manifest.webmanifest    PWA metadata
+icons/                  PNG app icons
 tools/build.js          bundles everything into dist/winter-arc.html
 tools/make-icons.js     regenerates the PNG app icons
-tools/test-store.js     34 tests over the tracking maths
+tools/fetch-assets.js   downloads the fonts + emoji into assets/ (npm run assets)
+tools/test-*.js         tests: tracking maths, assets, UI helpers, build output
+docs/superpowers/       design spec and implementation plans for the redesign
 ```
 
-Run the tests with `npm test`.
+Run the tests with `npm test`. To re-download the fonts and emoji into `assets/`
+(only needed if they go missing), run `npm run assets`.
 
 ### Changing things
 
 The whole look is driven by CSS custom properties at the top of `css/style.css` —
-change `--accent` and the entire app re-themes. There's a light theme in Settings too.
+change `--accent` (the icy `#8ecbff`) and the entire app re-themes. There's a light
+theme in Settings too.
 
 The chart series colours (`--series-1` … `--series-8`) are a deliberately chosen set:
 they sit in a lightness band that reads on the dark surface and stay distinguishable
 under colour-blindness. If you swap them, keep that in mind.
 
 After editing any file, re-run `npm run build` to refresh the single-file copy, and
-bump `CACHE` in `sw.js` so installed copies pick up the change.
+bump `CACHE` in `sw.js` so installed copies pick up the change. If you add a new
+font or emoji file, add it to `SHELL` in `sw.js` too — `npm test` checks this.
 
 ### Updating the live site
 
-The live link is served straight from this repo's `main` branch via GitHub Pages.
-To push a change live:
+The live link is served straight from this repo's `main` branch
+([anirudhparakala/winter-arc](https://github.com/anirudhparakala/winter-arc)) via
+GitHub Pages. One-time setup: repo **Settings → Pages → Source: "Deploy from a
+branch"**, then pick **main** / **(root)**. To push a change live:
 
 ```
 git add -A
 git commit -m "describe the change"
-git push
+git push origin main
 ```
 
 GitHub rebuilds the page automatically — usually live within a minute. People who
 already installed it as an app get the update next time they open it (the service
 worker refreshes its cache in the background).
+
+---
+
+## Credits
+
+Based on abhiman-06/winter-arc.
+
+## Attributions
+
+Microsoft's [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) (MIT, © Microsoft
+Corporation) and the Doto, Space Grotesk and Space Mono fonts (SIL Open Font License 1.1)
+are bundled in `assets/`. Full details are in [`assets/LICENSES.md`](assets/LICENSES.md).

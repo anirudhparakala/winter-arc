@@ -90,12 +90,10 @@
       freezeTokens: 9,
       habits: [
         h('Wake up at 5AM', 0, 'daily'),
-        h('Meditation',     6, 'daily'),
         h('Gym',            1, 'weekly', 5),
         h('Read 10 pages',  2, 'daily'),
         h('Eat healthy',    5, 'daily'),
         h('Plan next day',  4, 'daily'),
-        h('Journaling',     3, 'daily'),
         h('Cold shower',    7, 'daily'),
         h('No social media',6, 'daily')
       ],

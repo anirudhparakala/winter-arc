@@ -7,7 +7,7 @@
     "start": "npx --yes http-server . -p 4173 -c-1 -o",
     "build": "node tools/build.js",
     "icons": "node tools/make-icons.js",
-    "test": "node tools/test-store.js && node tools/test-assets.js && node tools/test-ui.js",
+    "test": "node tools/test-store.js && node tools/test-assets.js && node tools/test-ui.js && node tools/test-build.js",
     "assets": "node tools/fetch-assets.js"
   },
   "keywords": ["habits", "tracker", "goals", "pwa"],

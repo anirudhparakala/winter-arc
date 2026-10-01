@@ -1,5 +1,5 @@
 /* Generates icons/icon-192.png and icons/icon-512.png with no dependencies.
-   Draws the app mark: a dark rounded tile with a teal progress ring.
+   Draws the app mark: a black rounded tile with an icy-blue (#8ecbff) progress ring.
    Run: node tools/make-icons.js                                            */
 const fs = require('fs');
 const path = require('path');
@@ -52,7 +52,7 @@ function png(width, height, rgba) {
 }
 
 /* ---- the mark ---- */
-const BG = [11, 11, 13], TEAL = [45, 212, 191], TRACK = [30, 30, 34];
+const BG = [0, 0, 0], TEAL = [142, 203, 255], TRACK = [26, 34, 44];   // black tile, icy #8ecbff ring
 const SWEEP = 0.78;              // ring drawn to 78% — matches the hero ring
 
 function draw(size) {

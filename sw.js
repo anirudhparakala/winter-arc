@@ -1,6 +1,6 @@
 /* Service worker — makes Winter Arc installable and usable offline.
    Bump CACHE when you change any shell file.                            */
-const CACHE = 'winter-arc-v1';
+const CACHE = 'winter-arc-v2';
 const SHELL = [
   './',
   'index.html',
@@ -16,7 +16,32 @@ const SHELL = [
   'js/app.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
-  'icons/icon-512.png'
+  'icons/icon-512.png',
+  'assets/fonts/doto-700.woff2',
+  'assets/fonts/doto-900.woff2',
+  'assets/fonts/space-grotesk-400.woff2',
+  'assets/fonts/space-grotesk-500.woff2',
+  'assets/fonts/space-grotesk-600.woff2',
+  'assets/fonts/space-mono-400.woff2',
+  'assets/fonts/space-mono-700.woff2',
+  'assets/emoji/career.png',
+  'assets/emoji/community.png',
+  'assets/emoji/finance.png',
+  'assets/emoji/fire-anim.png',
+  'assets/emoji/fire.png',
+  'assets/emoji/fun.png',
+  'assets/emoji/health.png',
+  'assets/emoji/home.png',
+  'assets/emoji/party-anim.png',
+  'assets/emoji/party.png',
+  'assets/emoji/relations.png',
+  'assets/emoji/romance.png',
+  'assets/emoji/snowflake-anim.png',
+  'assets/emoji/snowflake.png',
+  'assets/emoji/spirit.png',
+  'assets/emoji/star.png',
+  'assets/emoji/travel.png',
+  'assets/emoji/trophy.png'
 ];
 
 self.addEventListener('install', e => {

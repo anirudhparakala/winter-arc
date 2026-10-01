@@ -1,0 +1,13 @@
+const { execSync } = require('child_process'); const fs = require('fs'), path = require('path'), assert = require('assert');
+const R = path.join(__dirname, '..');
+execSync('node tools/build.js', { cwd: R, stdio: 'inherit' });
+const html = fs.readFileSync(path.join(R, 'dist/winter-arc.html'), 'utf8');
+assert.ok(!/(?:src|href|url\()\s*["']?assets\//.test(html), 'single file still references assets/');
+assert.ok(html.includes('data:font/woff2;base64,'), 'fonts not inlined');
+assert.ok(html.includes('data:image/png;base64,'), 'emoji not inlined');
+const sw = fs.readFileSync(path.join(R, 'sw.js'), 'utf8');
+const shell = [...sw.matchAll(/'([^']+)'/g)].map(m => m[1]).filter(s => s.includes('/') || s.endsWith('.html'));
+shell.filter(s => s !== './').forEach(s => assert.ok(fs.existsSync(path.join(R, s)), 'missing ' + s));
+const files = d => fs.readdirSync(path.join(R, d)).map(f => d + '/' + f);
+[...files('assets/fonts'), ...files('assets/emoji')].forEach(f => assert.ok(shell.includes(f), 'not cached: ' + f));
+console.log('build ok');
