@@ -147,6 +147,16 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 .icon-btn:active { transform: translateY(1px); }
 .icon-btn.sm { width: 28px; height: 28px; }
 
+/* cloud-sync status on the settings button: lit = synced, hollow = waiting, amber = needs you */
+#settingsBtn { position: relative; }
+.sync-dot { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; }
+.sync-dot.is-idle { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+.sync-dot.is-pending { background: transparent; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.sync-dot.is-attention { background: var(--warn); }
+/* first-connect choices: long labels wrap instead of overflowing a 320px sheet */
+.connect-choices { display: flex; flex-direction: column; gap: 8px; }
+.connect-choices .btn { white-space: normal; text-align: left; justify-content: flex-start; line-height: 1.4; }
+
 .view { padding: 24px 0 0; }
 .view.enter { animation: enter .18s var(--snap); }
 @keyframes enter { from { opacity: 0; transform: translateY(4px); } }
@@ -731,6 +741,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   </nav>
   <div class="strip-r"><span class="clock dotnum" id="clock" aria-hidden="true"></span>
     <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+      <span class="sync-dot" id="syncDot" hidden aria-hidden="true"></span>
       <svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
     </button>
   </div>
@@ -948,11 +959,48 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
   function emit() { listeners.forEach(fn => fn()); }
 
+  const changeListeners = [];
+  /** local edits only (commit/import/reset) — not remote data applied by sync */
+  function markChanged() { changeListeners.forEach(fn => fn()); }
+
   /** mutate + save + re-render */
   function commit(fn) {
     fn(state);
     persist();
     emit();
+    markChanged();
+  }
+
+  /** the state as it is synced: a deep copy, without the per-device theme */
+  function snapshot() {
+    const c = JSON.parse(JSON.stringify(state));
+    delete c.settings.theme;
+    return c;
+  }
+  /** replace the state with data that came from the cloud (theme stays this device's own) */
+  function applySynced(snap) {
+    const theme = state.settings.theme;
+    const next = migrate(JSON.parse(JSON.stringify(snap)));
+    next.settings.theme = theme;
+    state = next;
+    persist();
+    // the state is already replaced and saved: a throwing render listener must not make the caller think it failed
+    try { emit(); } catch (e) { console.error('Winter Arc: a listener failed after sync.', e); }
+  }
+
+  /** another tab saved: adopt its copy (so this tab cannot overwrite it with a stale one).
+      Never writes, never marks a local change, and never replaces good state with defaults
+      (empty, corrupt or unreadable storage is ignored). Returns true if the state changed. */
+  function reloadFromStorage() {
+    let raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return false; }
+    if (!raw) return false;
+    let next;
+    try { next = migrate(JSON.parse(raw)); } catch (e) { return false; }
+    if (JSON.stringify(next) === JSON.stringify(state)) return false;
+    state = next;
+    emit();
+    return true;
   }
 
   /* ---------------- habit log ---------------- */
@@ -1176,8 +1224,9 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       throw new Error('Not a Winter Arc backup file.');
     state = migrate(parsed);
     persist(); emit();
+    markChanged();
   }
-  function reset() { state = defaultState(); persist(); emit(); }
+  function reset() { state = defaultState(); persist(); emit(); markChanged(); }
 
   /* ---------------- boot ---------------- */
   state = load();
@@ -1190,6 +1239,8 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     area: id => AREAS.find(a => a.id === id) || AREAS[0],
     subscribe(fn) { listeners.push(fn); },
     commit, persist,
+    snapshot, applySynced, reloadFromStorage,
+    onLocalChange(fn) { changeListeners.push(fn); },
 
     activeHabits, status, toggle, freeze, logOf,
     isMet, periodCount, periodKeys,
@@ -1203,6 +1254,477 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     exportJSON, importJSON, reset
   };
 })();
+
+</script>
+<script>
+/* ============================================================
+   merge.js — pure three-way merge for Winter Arc state.
+   No DOM, no network. Works on plain JSON; returns fresh copies.
+
+   Known limits (accepted):
+   - Freeze tokens are merged as a delta counter, so two devices freezing the SAME day
+     (a same-day conflict) is counted as two spends.
+   - Records merge by id: a rename on one device vs a delete on the other keeps the record
+     (the edit wins), and habit names are not used to match records after first connect.
+   - A goal's status/progress is stored, not derived: milestone changes from two devices can
+     leave a goal's status out of step with its milestones until the next edit.
+   - freezeTokens re-merges are only correct if the caller advances its base to the remote
+     it just merged against.
+   ============================================================ */
+(function (root) {
+  'use strict';
+
+  const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const isRecs = a => Array.isArray(a) && a.every(x => isObj(x) && typeof x.id === 'string');
+  const clone = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+  function equal(a, b) {
+    if (a === b) return true;
+    if (typeof a !== typeof b || a === null || b === null) return false;
+    if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((x, i) => equal(x, b[i]));
+    if (isObj(a)) {
+      if (!isObj(b)) return false;
+      const ka = Object.keys(a);
+      return ka.length === Object.keys(b).length && ka.every(k => has(b, k) && equal(a[k], b[k]));
+    }
+    return false;
+  }
+
+  /** b = base value, l = local, r = remote; undefined means "absent" (deleted). */
+  function mergeValue(b, l, r, prefer) {
+    if (equal(l, b)) return r;                       // local untouched → remote (incl. its deletion)
+    if (equal(r, b)) return l;                       // remote untouched → local
+    if (equal(l, r)) return l;                       // both made the same change
+    if (l === undefined) return r;                   // local deleted, remote edited → the edit wins
+    if (r === undefined) return l;                   // remote deleted, local edited → the edit wins
+    if (isObj(l) && isObj(r)) return mergeObjects(isObj(b) ? b : {}, l, r, prefer);
+    if (isRecs(l) && isRecs(r)) return mergeRecords(isRecs(b) ? b : [], l, r, prefer);
+    return prefer === 'remote' ? r : l;              // same leaf changed differently
+  }
+
+  function mergeObjects(b, l, r, prefer) {
+    const out = {};
+    new Set([...Object.keys(r), ...Object.keys(l), ...Object.keys(b)]).forEach(k => {
+      const v = mergeValue(b[k], l[k], r[k], prefer);
+      if (v !== undefined) out[k] = v;
+    });
+    return out;
+  }
+
+  /** arrays of {id, …}: merged per id; order = remote's order, then ids only local has */
+  function mergeRecords(b, l, r, prefer) {
+    const by = arr => new Map(arr.map(x => [x.id, x]));
+    const bm = by(b), lm = by(l), rm = by(r);
+    const ids = [...new Set([...r.map(x => x.id), ...l.map(x => x.id), ...b.map(x => x.id)])];
+    const out = [];
+    ids.forEach(id => {
+      const v = mergeValue(bm.get(id), lm.get(id), rm.get(id), prefer);
+      if (v !== undefined) out.push(v);
+    });
+    return out;
+  }
+
+  function three(base, local, remote, opts) {
+    const o = opts || {};
+    const b = isObj(base) ? base : {};
+    if (!isObj(local) || !isObj(remote)) return isObj(local) ? clone(local) : isObj(remote) ? clone(remote) : {};
+    if (equal(local, remote)) return clone(local);   // already converged: nothing to merge (and no double-counted deltas)
+    const out = clone(mergeValue(b, local, remote, o.prefer === 'remote' ? 'remote' : 'local'));
+    // freeze tokens are a counter: apply both sides' deltas
+    if ([b.freezeTokens, local.freezeTokens, remote.freezeTokens].every(Number.isFinite)) {
+      out.freezeTokens = Math.max(0, b.freezeTokens + (local.freezeTokens - b.freezeTokens) + (remote.freezeTokens - b.freezeTokens));
+    }
+    // logs of a habit that no longer exists are junk (e.g. delete on one device vs tick on the other)
+    if (Array.isArray(out.habits) && isObj(out.logs)) {
+      const ids = new Set(out.habits.map(h => h && h.id));
+      Object.keys(out.logs).forEach(k => { if (!ids.has(k)) delete out.logs[k]; });
+    }
+    return out;
+  }
+
+  const norm = s => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLowerCase();
+
+  /** No shared history (first sign-in on a device that already has data and the cloud has data):
+      habits created independently on two devices have different random ids, so habits with the
+      same name are treated as one (local logs are remapped); other conflicts → remote wins. */
+  function firstConnect(local, remote) {
+    if (!isObj(local) || !isObj(remote)) return three({}, local, remote, { prefer: 'remote' });
+    const l = clone(local);
+    const remoteHabits = Array.isArray(remote.habits) ? remote.habits : [];
+    const remoteIds = new Set(remoteHabits.map(h => h.id));
+    const localIds = new Set((l.habits || []).map(h => h.id));
+    const byName = new Map();
+    remoteHabits.forEach(h => { const n = norm(h.name); if (!byName.has(n)) byName.set(n, h.id); });
+    const idMap = {};
+    const remapped = new Set();                      // local habits that were remapped onto a remote id
+    (l.habits || []).forEach(h => {
+      if (remoteIds.has(h.id)) return;               // already the same record on both devices
+      const rid = byName.get(norm(h.name));
+      if (!rid || localIds.has(rid)) return;         // no match, or that id belongs to another local habit
+      idMap[h.id] = rid; h.id = rid; remapped.add(h);
+    });
+    const seen = new Set();                          // only collapse habits remapped onto the same remote id
+    l.habits = (l.habits || []).filter(h => {
+      if (!remapped.has(h)) return true;
+      if (seen.has(h.id)) return false;
+      seen.add(h.id); return true;
+    });
+    if (isObj(l.logs)) {
+      Object.keys(idMap).forEach(oldId => {
+        const rid = idMap[oldId];
+        if (!isObj(l.logs[oldId])) return;
+        l.logs[rid] = Object.assign({}, l.logs[oldId], l.logs[rid] || {});
+        delete l.logs[oldId];
+      });
+    }
+    return three({}, l, remote, { prefer: 'remote' });
+  }
+
+  const empty = o => !o || Object.keys(o).length === 0;
+  /** a fresh install: nothing logged, no tasks, goals or mindset entries */
+  function isPristine(d) {
+    return empty(d && d.mindset) &&
+      (!d || !d.goals || d.goals.length === 0) &&
+      (!d || !d.logs || Object.values(d.logs).every(empty)) &&
+      (!d || !d.tasks || Object.values(d.tasks).every(a => !a || a.length === 0));
+  }
+
+  const isState = d => isObj(d) && Array.isArray(d.habits);
+
+  root.Merge = { three, firstConnect, equal, isPristine, isState };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* Your Supabase project (see README → Cloud sync). Both values are PUBLIC by design — the anon
+   key is safe in a web page because row-level security limits every request to the signed-in
+   user's own row. NEVER put the service_role key here. Leave empty to run without sync. */
+window.SYNC_CONFIG = window.SYNC_CONFIG || { url: '', anonKey: '' };
+
+</script>
+<script>
+/* ============================================================
+   sync.js — Supabase sync engine (plain fetch, no library).
+   Every external thing (fetch, storage, store, merge, timers) is injected so
+   tools/test-sync.js can drive it against a fake server. See the cloud-sync spec.
+
+   Known limits (accepted):
+   - Two tabs sharing one storage are only coordinated for the token refresh; reloading on a
+     `storage` event is the UI task's job.
+   - A PATCH that was applied but whose response was lost can leave one freeze token of drift
+     (self-limiting: the next sync sees the new version and merges).
+   - jsonb does not keep key order; irrelevant because Merge.equal ignores order.
+
+   syncNow({interactive:true}) may open the first-connect dialog (Sync now button, sign-in);
+   plain syncNow() (debounce, visibility, polling) never asks.
+   ============================================================ */
+(function (root) {
+  'use strict';
+
+  const SESSION_KEY = 'winterArc.sync';
+  const BASE_KEY = 'winterArc.sync.base';
+  const REFRESH_MARGIN_MS = 60000;
+  const DEBOUNCE_MS = 3000;
+  const MAX_ATTEMPTS = 4;
+  const FETCH_TIMEOUT_MS = 25000;
+  const BUSY_MSG = 'Supabase is busy — will retry';
+  const BAD_DATA_MSG = 'Cloud data could not be applied — nothing was changed';
+  const CHOOSE_MSG = 'Choose how to connect this device — tap Sync now';
+
+  class NetError extends Error {}
+  class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+  /** the user has to do something (sign in again, pick a connect option, fix setup) */
+  class AttentionError extends Error {}
+  /** the work belongs to a sign-in that has since ended (sign-out / another sign-in): drop it silently */
+  class Stale extends Error {}
+
+  function create(deps) {
+    const fx = deps.fetch, storage = deps.storage, store = deps.store, merge = deps.merge;
+    const config = deps.config || {};
+    const now = deps.now || Date.now;
+    const setT = deps.setTimeout || setTimeout, clearT = deps.clearTimeout || clearTimeout;
+    const fetchTimeoutMs = deps.fetchTimeoutMs || FETCH_TIMEOUT_MS;
+    const listeners = [];
+    let running = null, again = false, againInteractive = false, timer = null;
+    let gen = 0;                       // bumped by signIn/signOut; work started under an older value is discarded
+    const guard = () => { const g = gen; return () => { if (g !== gen) throw new Stale(); }; };
+
+    const configured = () => !!(config.url && config.anonKey);
+    const readJSON = k => { try { const v = storage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+    const writeJSON = (k, v) => { try { storage.setItem(k, JSON.stringify(v)); } catch (e) { /* blocked/full: this run still works */ } };
+    const drop = k => { try { storage.removeItem(k); } catch (e) { /* ignore */ } };
+    const hasSession = () => { const s = readJSON(SESSION_KEY); return !!(s && s.accessToken); };
+
+    let st = { state: 'unconfigured', message: 'Not configured', lastSyncedAt: null, email: null };
+    function initialStatus() {
+      if (!configured()) return { state: 'unconfigured', message: 'Not configured', lastSyncedAt: null, email: null };
+      const s = readJSON(SESSION_KEY);
+      if (s && s.accessToken) return { state: 'idle', message: 'Not synced yet', lastSyncedAt: null, email: s.email || null };
+      return { state: 'signedOut', message: s && s.email ? 'Sign in again' : 'Signed out', lastSyncedAt: null, email: (s && s.email) || null };
+    }
+    st = initialStatus();
+    function setStatus(patch) {
+      st = Object.assign({}, st, patch);
+      listeners.slice().forEach(fn => { try { fn(st); } catch (e) { /* a bad listener must not break sync */ } });
+    }
+
+    /* ---------- http ---------- */
+    /** one request, with a timeout so a request that never answers cannot wedge the engine */
+    async function http(method, path, o) {
+      const opt = o || {};
+      const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      let tid = null;
+      const work = (async () => {
+        const res = await fx(config.url.replace(/\/+$/, '') + path, {
+          method,
+          headers: Object.assign({ apikey: config.anonKey, 'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + (opt.token || config.anonKey) }, opt.prefer ? { Prefer: opt.prefer } : {}),
+          body: opt.body === undefined ? undefined : JSON.stringify(opt.body),
+          signal: ctl ? ctl.signal : undefined
+        });
+        let json = null;
+        try { json = await res.json(); } catch (e) { /* empty or non-JSON body */ }
+        return { status: res.status, ok: res.ok, json };
+      })();
+      const timeout = new Promise((resolve, reject) => {
+        tid = setT(() => { try { if (ctl) ctl.abort(); } catch (e) { /* ignore */ } reject(new Error('timeout')); }, fetchTimeoutMs);
+      });
+      try { return await Promise.race([work, timeout]); }
+      catch (e) { throw new NetError("Can't reach Supabase — changes are saved on this device"); }
+      finally { if (tid !== null) clearT(tid); }
+    }
+    const httpErr = r => new HttpError(r.status, (r.json && (r.json.message || r.json.msg || r.json.error_description)) || ('Request failed (' + r.status + ')'));
+
+    /* ---------- session ---------- */
+    function saveSession(j, email) {
+      const prev = readJSON(SESSION_KEY) || {};
+      const s = { email: email || prev.email || null, userId: (j.user && j.user.id) || prev.userId,
+                  accessToken: j.access_token, refreshToken: j.refresh_token, expiresAt: now() + (j.expires_in || 3600) * 1000 };
+      writeJSON(SESSION_KEY, s);
+      return s;
+    }
+    function dropTokens() { const s = readJSON(SESSION_KEY) || {}; writeJSON(SESSION_KEY, { email: s.email || null, userId: s.userId || null }); }
+
+    async function refresh(s) {
+      const live = guard();
+      const r = await http('POST', '/auth/v1/token?grant_type=refresh_token', { body: { refresh_token: s.refreshToken } });
+      live();
+      if (r.status >= 500 || r.status === 429) throw httpErr(r);
+      if (!r.ok) {
+        const cur = readJSON(SESSION_KEY);                 // another tab may have rotated the token already
+        if (cur && cur.accessToken && cur.refreshToken && cur.refreshToken !== s.refreshToken) return cur;
+        dropTokens(); throw new AttentionError('Sign in again');
+      }
+      if (!r.json || !r.json.access_token) throw new HttpError(502, 'Unexpected reply');
+      return saveSession(r.json, s.email);
+    }
+    async function ensureSession() {
+      let s = readJSON(SESSION_KEY);
+      if (!s || !s.accessToken) throw new AttentionError(s && s.email ? 'Sign in again' : 'Signed out');
+      if (s.expiresAt - now() < REFRESH_MARGIN_MS) s = await refresh(s);
+      return s;
+    }
+    /** an authenticated request; one transparent refresh on 401 */
+    async function api(method, path, o) {
+      let s = await ensureSession();
+      let r = await http(method, path, Object.assign({ token: s.accessToken }, o));
+      if (r.status === 401) { s = await refresh(s); r = await http(method, path, Object.assign({ token: s.accessToken }, o)); }
+      return r;
+    }
+
+    /* ---------- the one row ---------- */
+    const enc = encodeURIComponent;
+    async function getRow(s) {
+      const r = await api('GET', '/rest/v1/user_state?select=data,version&user_id=eq.' + enc(s.userId));
+      if (!r.ok) throw httpErr(r);
+      if (!Array.isArray(r.json)) throw new HttpError(502, 'Unexpected reply');   // never mistake junk for "no row"
+      return r.json[0] || null;
+    }
+    async function insertRow(s, data) {
+      const r = await api('POST', '/rest/v1/user_state', { body: { user_id: s.userId, data, version: 1 }, prefer: 'return=representation' });
+      if (r.status === 409) return false;
+      if (!r.ok) throw httpErr(r);
+      if (r.status === 201 || (Array.isArray(r.json) && r.json.length === 1)) return true;
+      throw new HttpError(502, 'Unexpected reply');
+    }
+    /** compare-and-set: true only if the row still had `fromVersion` */
+    async function pushCAS(s, data, fromVersion) {
+      const r = await api('PATCH', '/rest/v1/user_state?user_id=eq.' + enc(s.userId) + '&version=eq.' + fromVersion,
+        { body: { data, version: fromVersion + 1, updated_at: new Date(now()).toISOString() }, prefer: 'return=representation' });
+      if (!r.ok) throw httpErr(r);
+      return Array.isArray(r.json) && r.json.length === 1;
+    }
+
+    /** a base belongs to one account; one without (or with another) userId counts as no base */
+    function readBase(userId) {
+      const b = readJSON(BASE_KEY);
+      return b && userId && b.userId === userId && typeof b.version === 'number' && b.data ? b : null;
+    }
+    const saveBase = (userId, version, data) => writeJSON(BASE_KEY, { userId, version, data });
+
+    /* ---------- one sync pass ---------- */
+    async function run(live, interactive) {
+      const s = await ensureSession(); live();
+      // "base" = the last state both sides agreed on. Once we apply a merge locally, local already
+      // contains the remote's changes, so the base advances to that remote (and is persisted at once):
+      // a failed or lost push must never make the next run merge against the old base, because
+      // Merge.three applies deltas to freezeTokens and would count the remote's spend twice.
+      let base = readBase(s.userId);
+      const setBase = (version, data) => { saveBase(s.userId, version, data); base = { version, data }; };
+      let chosen = null;                                   // the first-connect answer survives a lost race
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const row = await getRow(s); live();
+        const local = store.snapshot();
+        if (!row) {
+          const ok = await insertRow(s, local); live();
+          if (ok) { setBase(1, local); return 'uploaded'; }
+          continue;
+        }
+        if (!merge.isState(row.data)) throw new AttentionError('The cloud data looks unreadable — nothing was changed');
+        if (!base) {
+          if (merge.isPristine(local)) { store.applySynced(row.data); setBase(row.version, store.snapshot()); return 'downloaded'; }
+          if (merge.isPristine(row.data)) {
+            const ok = await pushCAS(s, local, row.version); live();
+            if (ok) { setBase(row.version + 1, local); return 'uploaded'; }
+            continue;
+          }
+          if (!chosen) {
+            if (!interactive) throw new AttentionError(CHOOSE_MSG);   // background triggers never open the dialog
+            chosen = deps.askFirstConnect ? await deps.askFirstConnect() : null; live();
+            if (!chosen) throw new AttentionError(CHOOSE_MSG);
+            attempt--; continue;                                      // the user may have edited meanwhile: re-read both sides
+          }
+          if (chosen === 'cloud') { store.applySynced(row.data); setBase(row.version, store.snapshot()); return 'downloaded'; }
+          if (chosen === 'device') {
+            const ok = await pushCAS(s, local, row.version); live();
+            if (ok) { setBase(row.version + 1, local); return 'uploaded'; }
+            continue;
+          }
+          store.applySynced(merge.firstConnect(local, row.data));     // 'merge'
+          setBase(row.version, row.data);                             // local now includes the cloud copy
+          const data = store.snapshot();
+          const ok = await pushCAS(s, data, row.version); live();
+          if (ok) { setBase(row.version + 1, data); return 'merged'; }
+          continue;
+        }
+        if (row.version === base.version) {
+          if (merge.equal(local, base.data)) return 'clean';
+          const ok = await pushCAS(s, local, row.version); live();
+          if (ok) { setBase(row.version + 1, local); return 'pushed'; }
+          continue;
+        }
+        const merged = merge.three(base.data, local, row.data);
+        let data = merged;
+        if (!merge.equal(merged, local)) { store.applySynced(merged); data = store.snapshot(); }
+        if (merge.equal(data, row.data)) { setBase(row.version, data); return 'pulled'; }
+        setBase(row.version, row.data);                               // local now includes this remote
+        const ok = await pushCAS(s, data, row.version); live();
+        if (ok) { setBase(row.version + 1, data); return 'merged'; }
+      }
+      throw new HttpError(409, BUSY_MSG);
+    }
+
+    function report(e) {
+      if (e instanceof NetError) return setStatus({ state: 'pending', message: e.message });
+      if (e instanceof AttentionError) return setStatus({ state: 'attention', message: e.message });
+      if (e instanceof HttpError && (e.status >= 500 || e.status === 429 || e.status === 409))
+        return setStatus({ state: 'pending', message: 'Supabase is busy — will retry (' + e.status + ')' });
+      if (e instanceof HttpError) return setStatus({ state: 'attention', message: 'Setup problem: ' + e.message });
+      return setStatus({ state: 'attention', message: BAD_DATA_MSG });   // never show raw exception text
+    }
+
+    /** opts.interactive: this call may open the first-connect dialog (Sync now button, sign-in).
+        Background triggers (debounce, visibility, polling) call syncNow() with no options and never ask. */
+    function syncNow(opts) {
+      if (!configured() || !hasSession()) return Promise.resolve('skipped');
+      const wantAsk = !!(opts && opts.interactive);
+      if (running) { again = true; if (wantAsk) againInteractive = true; return running; }
+      let interactive = wantAsk;
+      running = (async () => {
+        let out = 'clean';
+        try {
+          do {
+            again = false;
+            if (!configured() || !hasSession()) { out = 'skipped'; break; }
+            const g = gen, live = guard(), ask = interactive || againInteractive;
+            interactive = false; againInteractive = false;
+            setStatus({ state: 'syncing', message: 'Syncing…' });
+            try { out = await run(live, ask); }
+            catch (e) {
+              if (g !== gen) { out = 'skipped'; continue; }          // signed out / re-signed in meanwhile
+              if (againInteractive) continue;                        // an interactive request arrived mid-run: honour it with another pass
+              throw e;
+            }
+            if (g !== gen) { out = 'skipped'; continue; }
+            setStatus({ state: 'idle', message: 'Synced', lastSyncedAt: now(), email: (readJSON(SESSION_KEY) || {}).email || st.email });
+          } while (again);
+          return out;
+        } catch (e) { report(e); return 'error'; }
+        finally { running = null; }
+      })();
+      return running;
+    }
+
+    /** called from Store.commit's change listener — must never throw */
+    function notifyLocalChange() {
+      try {
+        if (!configured() || !hasSession()) return;
+        if (timer) clearT(timer);
+        timer = setT(() => { timer = null; syncNow(); }, DEBOUNCE_MS);
+      } catch (e) { /* a sync hiccup must never break saving */ }
+    }
+
+    async function signIn(email, password) {
+      if (!configured()) throw new Error('Sync is not configured yet');
+      const r = await http('POST', '/auth/v1/token?grant_type=password', { body: { email, password } });
+      if (!r.ok || !r.json || !r.json.access_token) {
+        const code = String((r.json && (r.json.error_code || r.json.error)) || '');
+        if ((r.status === 400 || r.status === 401) && /invalid_grant|invalid_credentials/.test(code)) throw new Error('Wrong email or password');
+        throw new Error(r.status === 429 ? 'Too many attempts — wait a minute and try again' : 'Sign-in failed (' + r.status + ')');
+      }
+      gen++;                                               // anything still running belongs to the previous sign-in
+      const prev = readJSON(SESSION_KEY);
+      if (prev && prev.userId && r.json.user && prev.userId !== r.json.user.id) drop(BASE_KEY);   // another account: its base is not ours
+      saveSession(r.json, email);
+      setStatus({ state: 'idle', message: 'Signed in', email });
+      return syncNow({ interactive: true });
+    }
+
+    async function signOut() {
+      gen++;
+      const s = readJSON(SESSION_KEY);
+      drop(SESSION_KEY); drop(BASE_KEY);
+      setStatus({ state: configured() ? 'signedOut' : 'unconfigured', message: 'Signed out', email: null, lastSyncedAt: null });
+      if (s && s.accessToken && configured()) { try { await http('POST', '/auth/v1/logout?scope=local', { token: s.accessToken }); } catch (e) { /* offline: already signed out locally */ } }
+    }
+
+    /** used after Reset: make the cloud copy equal this device, whatever the cloud holds */
+    async function overwriteCloud() {
+      if (!configured() || !hasSession()) return false;
+      const live = guard();                                // taken BEFORE waiting, so a sign-out during the wait is noticed
+      try {
+        if (running) await running;
+        live();
+        const s = await ensureSession(); live();
+        for (let i = 0; i < MAX_ATTEMPTS; i++) {
+          const row = await getRow(s); live();
+          const local = store.snapshot();
+          const done = () => { saveBase(s.userId, row ? row.version + 1 : 1, local); setStatus({ state: 'idle', message: 'Synced', lastSyncedAt: now() }); return true; };
+          if (!row) { const ok = await insertRow(s, local); live(); if (ok) return done(); continue; }
+          const ok = await pushCAS(s, local, row.version); live();
+          if (ok) return done();
+        }
+        throw new HttpError(409, BUSY_MSG);
+      } catch (e) { if (e instanceof Stale) return false; report(e); return false; }
+    }
+
+    return { status: () => st, onStatus: fn => listeners.push(fn), isConfigured: configured, isSignedIn: hasSession,
+             signIn, signOut, syncNow, notifyLocalChange, overwriteCloud };
+  }
+
+  root.SyncEngine = { create };
+})(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
 <script>
@@ -3036,7 +3558,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  document.getElementById('settingsBtn').onclick = () => {
+  function openSettings() {
     const s = Store.state.settings;
     const a = Store.arc();
     UI.modal('Settings', `
@@ -3064,8 +3586,12 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         Current arc: <b>${esc(a.start)}</b> → <b>${esc(a.end)}</b> · ${a.total} days ·
         ${a.left} left.${Store.memoryOnly
           ? '<br><b style="color:var(--warn)">This browser is blocking local storage — export a backup before you close the tab.</b>'
-          : '<br>Everything is saved in this browser only. Export a backup to move it to another device.'}
+          : sync.isSignedIn()
+            ? '<br>Saved on this device and synced to your cloud copy.'
+            : '<br>Everything is saved in this browser only. Export a backup to move it to another device.'}
       </p>
+
+      ${syncSectionHTML()}
 
       <div class="card-label" style="margin-bottom:8px">Your data</div>
       <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -3111,14 +3637,40 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         r.readAsText(f);
       };
       m.querySelector('#sReset').onclick = () => {
-        UI.confirm('Erase every habit, task, goal and logged day on this device?', () => {
+        const signedIn = sync.isSignedIn();
+        UI.confirm(signedIn
+          ? 'Erase every habit, task, goal and logged day on this device AND in your cloud copy? Your other devices will be erased on their next sync.'
+          : 'Erase every habit, task, goal and logged day on this device?', () => {
           Store.reset(); applyTheme(); UI.close(); UI.toast('Reset complete.');
+          if (signedIn) sync.overwriteCloud();
         }, 'Erase everything');
       };
+
+      // cloud sync controls
+      const line = m.querySelector('#syLine');
+      const inBtn = m.querySelector('#syIn');
+      if (inBtn) {
+        const email = m.querySelector('#syEmail'), pass = m.querySelector('#syPass');
+        const submit = () => {
+          const e = email.value.trim(), p = pass.value;
+          if (!e || !p) { line.textContent = 'Enter your email and password.'; return; }
+          inBtn.disabled = true; line.textContent = 'Signing in…';
+          sync.signIn(e, p)
+            .then(() => { UI.close(); openSettings(); })   // the first-connect dialog may have replaced this one: that is fine
+            .catch(err => { line.textContent = (err && err.message) || 'Sign-in failed'; inBtn.disabled = false; });
+        };
+        inBtn.onclick = submit;
+        [email, pass].forEach(i => i.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }));
+      }
+      const nowBtn = m.querySelector('#syNow');
+      if (nowBtn) nowBtn.onclick = () => { if (!askOpen) sync.syncNow({ interactive: true }); };
+      const outBtn = m.querySelector('#syOut');
+      if (outBtn) outBtn.onclick = () => { outBtn.disabled = true; sync.signOut().then(() => { UI.close(); openSettings(); }); };
     },
     // the theme select previews live — put it back if the dialog is dismissed
     () => applyTheme());
-  };
+  }
+  document.getElementById('settingsBtn').onclick = openSettings;
 
   function applyTheme() {
     document.documentElement.dataset.theme = Store.state.settings.theme || 'dark';
@@ -3141,6 +3693,96 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   if (Store.memoryOnly) {
     UI.toast('Local storage is blocked here — use Export backup to keep your data.');
   }
+
+  /* ---------------- cloud sync ---------------- */
+  let askOpen = false, askPending = null;
+
+  /** the first-connect dialog: one at a time; backdrop / Esc / close resolves null (dismissed) */
+  function askFirstConnect() {
+    if (askOpen) {
+      const showing = !document.getElementById('modalRoot').hidden &&
+        document.getElementById('modalTitle').textContent === 'Connect this device';
+      if (showing) return askPending;
+      askOpen = false;                          // the dialog was replaced without closing: do not stay stuck
+    }
+    askOpen = true;
+    askPending = new Promise(resolve => {
+      let done = false;
+      const fin = v => { if (!done) { done = true; askOpen = false; askPending = null; resolve(v); } };
+      UI.modal('Connect this device', `
+        <p class="muted" style="margin:0 0 14px;line-height:1.6">Both this device and your cloud copy already have data. How should they be combined?</p>
+        <div class="connect-choices">
+          <button class="btn btn-primary" data-c="merge">Merge both (recommended)</button>
+          <button class="btn" data-c="cloud">Use the cloud copy (replace this device)</button>
+          <button class="btn btn-danger" data-c="device">Use this device (overwrite the cloud)</button>
+        </div>`, m => {
+        m.querySelectorAll('[data-c]').forEach(b => { b.onclick = () => { fin(b.dataset.c); UI.close(); }; });
+      }, () => fin(null));
+    });
+    return askPending;
+  }
+
+  const sync = SyncEngine.create({
+    fetch: (...a) => window.fetch(...a), storage: localStorage, store: Store, merge: Merge,
+    config: window.SYNC_CONFIG || {}, askFirstConnect
+  });
+  window.Sync = sync;
+  Store.onLocalChange(sync.notifyLocalChange);
+
+  const dot = document.getElementById('syncDot');
+  const DOT_LABEL = { idle: 'Synced', syncing: 'Syncing', pending: 'Waiting to sync', attention: 'Sync needs attention' };
+  function paintDot(s) {
+    const show = sync.isConfigured() && sync.isSignedIn() && s.state !== 'signedOut' && s.state !== 'unconfigured';
+    dot.hidden = !show;
+    dot.className = 'sync-dot is-' + (s.state === 'syncing' ? 'idle' : s.state);
+    const btn = document.getElementById('settingsBtn');
+    const label = show ? 'Settings — ' + (DOT_LABEL[s.state] || '') : 'Settings';
+    btn.setAttribute('aria-label', label); btn.title = label;
+  }
+  function timeAgo(t) { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago'; }
+  function statusText(s) {
+    if (s.state === 'syncing') return 'Syncing…';
+    if (s.state === 'idle') return s.lastSyncedAt ? 'Synced ' + timeAgo(s.lastSyncedAt) : s.message;
+    return s.message;
+  }
+  /** signed out: only a message that asks something of the user is worth showing */
+  function signedOutText(s) {
+    return s.state === 'attention' || s.state === 'pending' || s.message === 'Sign in again' ? s.message : '';
+  }
+  function syncSectionHTML() {
+    const s = sync.status();
+    if (!sync.isConfigured()) return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
+      <p class="muted" style="font-size:12px;margin:0 0 16px;line-height:1.55">Not set up. Add your Supabase project in <b>js/sync-config.js</b> (see README → Cloud sync) to use this app on several devices.</p>`;
+    if (!sync.isSignedIn()) return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
+      <label class="field"><span>Email</span><input class="input" id="syEmail" type="email" autocomplete="username" value="${esc(s.email || '')}"></label>
+      <label class="field"><span>Password</span><input class="input" id="syPass" type="password" autocomplete="current-password"></label>
+      <div class="row" style="gap:8px;margin-bottom:6px"><button class="btn btn-sm btn-primary" id="syIn">Sign in</button></div>
+      <p class="muted" id="syLine" role="status" style="font-size:12px;margin:0 0 16px;line-height:1.55">${esc(signedOutText(s))}</p>`;
+    return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
+      <p class="muted" style="font-size:12px;margin:0 0 8px;overflow-wrap:anywhere">Signed in as <b>${esc(s.email || '')}</b></p>
+      <p class="muted" id="syLine" role="status" style="font-size:12px;margin:0 0 10px;line-height:1.55">${esc(statusText(s))}</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:16px"><button class="btn btn-sm" id="syNow">Sync now</button><button class="btn btn-sm" id="syOut">Sign out</button></div>`;
+  }
+
+  sync.onStatus(s => {
+    paintDot(s);
+    const el = document.getElementById('syLine');       // only while Settings is open
+    if (el) el.textContent = sync.isSignedIn() ? statusText(s) : signedOutText(s);
+  });
+  paintDot(sync.status());
+
+  // background triggers never open the first-connect dialog (plain syncNow, no options)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) sync.syncNow(); });
+  window.addEventListener('online', () => sync.syncNow());
+  setInterval(() => { if (!document.hidden) sync.syncNow(); }, 60000);
+
+  // another tab saved: adopt its copy so this tab can't overwrite it with a stale one
+  // (storage events only fire in OTHER tabs; reloading never marks a local change)
+  window.addEventListener('storage', e => {
+    if (e.key === 'winterArc.v1' && e.newValue != null && Store.reloadFromStorage()) applyTheme();
+  });
+
+  sync.syncNow();
 
   // installable app — only meaningful over http(s); harmless to skip on file://
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
