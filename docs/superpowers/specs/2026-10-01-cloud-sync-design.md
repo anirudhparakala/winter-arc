@@ -78,9 +78,9 @@ Local keys: `winterArc.sync.base` = `{ version, data }` — the last state both 
 
 1. Ensure a valid session. `GET /rest/v1/user_state?select=data,version` (RLS returns only my row).
 2. **No row**: `POST` local snapshot (version 1) → base = local.
-3. **Row, no base (first connect on this device)**: if `Store.isPristine()` ⇒ download (apply remote,
-   base = remote). If the cloud copy is empty-ish and local has data ⇒ upload. If **both** have data
-   ⇒ ask the owner: **Merge both** (default) / **Use cloud copy** / **Use this device (overwrite
+3. **Row, no base (first connect on this device)**: if `Store.isPristine()` (local has no logs, tasks,
+   goals or mindset) ⇒ download (apply remote, base = remote). Else if the cloud copy is pristine by the
+   same test ⇒ upload local (base = local). If **both** have data ⇒ ask the owner: **Merge both** (default) / **Use cloud copy** / **Use this device (overwrite
    cloud)**.
 4. **Row, base present**: `remote.version == base.version` and local == base.data ⇒ nothing to do;
    same version and local changed ⇒ push; `remote.version > base.version` ⇒ `merged =
