@@ -758,6 +758,32 @@ let finished = false;
 process.on('exit', code => { if (!finished && !code) { console.log('  FAIL tests did not finish (a promise never settled): ' + (pass + fail) + ' of ' + tests.length + ' ran'); process.exitCode = 1; } });
 setTimeout(() => { console.log('  FAIL watchdog: tests did not finish within 60 s'); process.exit(1); }, 60000).unref();
 
+/* ---- storage that the browser blocks: merely reading window.localStorage throws ---- */
+test('safeStorage returns window.localStorage when it works', async () => {
+  const d = device(fakeSupabase());
+  assert.strictEqual(d.ctx.SyncEngine.safeStorage({ localStorage: d.ctx.localStorage }), d.ctx.localStorage);
+});
+test('safeStorage falls back to an in-memory shim when reading window.localStorage throws', async () => {
+  const d = device(fakeSupabase());
+  const win = {}; Object.defineProperty(win, 'localStorage', { get() { throw new Error('SecurityError'); } });
+  const st = d.ctx.SyncEngine.safeStorage(win);
+  assert.strictEqual(st.getItem('a'), null);
+  st.setItem('a', 1); assert.strictEqual(st.getItem('a'), '1');
+  st.removeItem('a'); assert.strictEqual(st.getItem('a'), null);
+  // a null/undefined localStorage (some embedded browsers) is treated the same way
+  assert.strictEqual(d.ctx.SyncEngine.safeStorage({ localStorage: null }).getItem('x'), null);
+});
+test('an engine over the shim signs in and syncs for the session (blocked storage must not break it)', async () => {
+  const srv = fakeSupabase(); const d = device(srv);
+  const win = {}; Object.defineProperty(win, 'localStorage', { get() { throw new Error('SecurityError'); } });
+  const sync = d.ctx.SyncEngine.create({ fetch: srv.fetchImpl, storage: d.ctx.SyncEngine.safeStorage(win), store: d.store, merge: d.ctx.Merge,
+    config: { url: BASE, anonKey: 'anon' }, askFirstConnect: async () => null,
+    setTimeout, clearTimeout });
+  await sync.signIn('me@x.com', 'pw');
+  assert.strictEqual(sync.isSignedIn(), true);
+  assert.strictEqual(sync.status().state, 'idle');
+});
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); pass++; console.log('  ok   ' + name); }

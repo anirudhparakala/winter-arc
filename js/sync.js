@@ -317,5 +317,13 @@
              signIn, signOut, syncNow, notifyLocalChange, overwriteCloud };
   }
 
-  root.SyncEngine = { create };
+  /** window.localStorage, or a tiny in-memory stand-in when the browser blocks storage
+      (merely reading the property can throw a SecurityError) */
+  function safeStorage(win) {
+    try { const s = win && win.localStorage; if (s) return s; } catch (e) { /* blocked */ }
+    const m = new Map();
+    return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: k => { m.delete(k); } };
+  }
+
+  root.SyncEngine = { create, safeStorage };
 })(typeof window !== 'undefined' ? window : globalThis);

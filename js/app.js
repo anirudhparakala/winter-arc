@@ -80,6 +80,7 @@
 
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!document.getElementById('modalRoot').hidden) return;   // shortcuts belong to the page, not an open dialog
     const i = parseInt(e.key, 10);
     if (i >= 1 && i <= PAGES.length) go(PAGES[i - 1]);
     if (e.key === 'n' || e.key === 'N') {
@@ -192,12 +193,16 @@
       if (inBtn) {
         const email = m.querySelector('#syEmail'), pass = m.querySelector('#syPass');
         const submit = () => {
+          if (inBtn.disabled) return;                       // Enter pressed again while signing in
           const e = email.value.trim(), p = pass.value;
-          if (!e || !p) { line.textContent = 'Enter your email and password.'; return; }
-          inBtn.disabled = true; line.textContent = 'Signing in…';
+          if (!e || !p) { showLine(line, 'Enter your email and password.', true); return; }
+          inBtn.disabled = true; showLine(line, 'Signing in…');
+          const asked = askCount;
           sync.signIn(e, p)
-            .then(() => { UI.close(); openSettings(); })   // the first-connect dialog may have replaced this one: that is fine
-            .catch(err => { line.textContent = (err && err.message) || 'Sign-in failed'; inBtn.disabled = false; });
+            // the first-connect dialog may have replaced Settings (and closed again): bring Settings back,
+            // but never touch a modal the user opened meanwhile
+            .then(() => { if (inBtn.isConnected || (askCount !== asked && modalIsClosed())) reopenSettings(); })
+            .catch(err => { showLine(line, (err && err.message) || 'Sign-in failed', true); inBtn.disabled = false; });
         };
         inBtn.onclick = submit;
         [email, pass].forEach(i => i.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }));
@@ -205,7 +210,10 @@
       const nowBtn = m.querySelector('#syNow');
       if (nowBtn) nowBtn.onclick = () => { if (!askOpen) sync.syncNow({ interactive: true }); };
       const outBtn = m.querySelector('#syOut');
-      if (outBtn) outBtn.onclick = () => { outBtn.disabled = true; sync.signOut().then(() => { UI.close(); openSettings(); }); };
+      if (outBtn) outBtn.onclick = () => {
+        outBtn.disabled = true;
+        sync.signOut().then(() => { if (outBtn.isConnected) reopenSettings(); });
+      };
     },
     // the theme select previews live — put it back if the dialog is dismissed
     () => applyTheme());
@@ -235,7 +243,15 @@
   }
 
   /* ---------------- cloud sync ---------------- */
-  let askOpen = false, askPending = null;
+  let askOpen = false, askPending = null, askCount = 0;
+  const modalIsClosed = () => document.getElementById('modalRoot').hidden;
+  const reopenSettings = () => { if (!modalIsClosed()) UI.close(); openSettings(); };
+  /** error text is announced at once (role=alert); the ordinary status line stays polite */
+  function showLine(el, text, isError) {
+    if (!el) return;
+    el.setAttribute('role', isError ? 'alert' : 'status');
+    el.textContent = text;
+  }
 
   /** the first-connect dialog: one at a time; backdrop / Esc / close resolves null (dismissed) */
   function askFirstConnect() {
@@ -245,7 +261,7 @@
       if (showing) return askPending;
       askOpen = false;                          // the dialog was replaced without closing: do not stay stuck
     }
-    askOpen = true;
+    askOpen = true; askCount++;
     askPending = new Promise(resolve => {
       let done = false;
       const fin = v => { if (!done) { done = true; askOpen = false; askPending = null; resolve(v); } };
@@ -262,24 +278,46 @@
     return askPending;
   }
 
-  const sync = SyncEngine.create({
-    fetch: (...a) => window.fetch(...a), storage: localStorage, store: Store, merge: Merge,
-    config: window.SYNC_CONFIG || {}, askFirstConnect
-  });
+  /** sync is optional: if it cannot start (blocked storage, a script that failed to load) the app
+      carries on exactly as it does without sync, with an inert stand-in engine */
+  function createSync() {
+    try {
+      return SyncEngine.create({
+        fetch: (...a) => window.fetch(...a), storage: SyncEngine.safeStorage(window), store: Store, merge: Merge,
+        config: window.SYNC_CONFIG || {}, askFirstConnect
+      });
+    } catch (err) {
+      console.warn('Winter Arc: cloud sync is unavailable.', err);
+      const st = { state: 'unconfigured', message: 'Not configured', lastSyncedAt: null, email: null };
+      const none = () => Promise.resolve('skipped');
+      return { status: () => st, onStatus() {}, isConfigured: () => false, isSignedIn: () => false,
+               signIn: () => Promise.reject(new Error('Sync is not available')), signOut: none, syncNow: none,
+               notifyLocalChange() {}, overwriteCloud: () => Promise.resolve(false) };
+    }
+  }
+  const sync = createSync();
   window.Sync = sync;
   Store.onLocalChange(sync.notifyLocalChange);
 
   const dot = document.getElementById('syncDot');
   const DOT_LABEL = { idle: 'Synced', syncing: 'Syncing', pending: 'Waiting to sync', attention: 'Sync needs attention' };
   function paintDot(s) {
-    const show = sync.isConfigured() && sync.isSignedIn() && s.state !== 'signedOut' && s.state !== 'unconfigured';
+    const configured = sync.isConfigured();
+    const signedIn = configured && sync.isSignedIn();
+    // a session that was dropped ("Sign in again") must not fail silently: amber dot until the user signs in
+    const needsSignIn = configured && !signedIn && s.state !== 'unconfigured' &&
+      (s.state === 'attention' || (!!s.email && s.message === 'Sign in again'));
+    const show = (signedIn && s.state !== 'signedOut' && s.state !== 'unconfigured') || needsSignIn;
     dot.hidden = !show;
-    dot.className = 'sync-dot is-' + (s.state === 'syncing' ? 'idle' : s.state);
+    dot.className = 'sync-dot is-' + (needsSignIn ? 'attention' : s.state === 'syncing' ? 'idle' : s.state);
     const btn = document.getElementById('settingsBtn');
-    const label = show ? 'Settings — ' + (DOT_LABEL[s.state] || '') : 'Settings';
+    const label = !show ? 'Settings' : 'Settings — ' + (needsSignIn ? 'Sign in again' : DOT_LABEL[s.state] || '');
     btn.setAttribute('aria-label', label); btn.title = label;
   }
-  function timeAgo(t) { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago'; }
+  function timeAgo(t) {
+    const m = Math.round((Date.now() - t) / 60000);
+    return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 48 * 60 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago';
+  }
   function statusText(s) {
     if (s.state === 'syncing') return 'Syncing…';
     if (s.state === 'idle') return s.lastSyncedAt ? 'Synced ' + timeAgo(s.lastSyncedAt) : s.message;
@@ -307,7 +345,7 @@
   sync.onStatus(s => {
     paintDot(s);
     const el = document.getElementById('syLine');       // only while Settings is open
-    if (el) el.textContent = sync.isSignedIn() ? statusText(s) : signedOutText(s);
+    if (el) showLine(el, sync.isSignedIn() ? statusText(s) : signedOutText(s));
   });
   paintDot(sync.status());
 
