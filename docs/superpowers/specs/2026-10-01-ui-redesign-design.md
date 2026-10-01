@@ -62,7 +62,7 @@ interaction need it.
   colour when active (e.g. 🔥 is grey until a streak ≥ 3, then colour + flicker).
 - **Animated, and only these:** 🔥 flicker on streaks ≥ 3; 🎉 once when today hits
   100%; 🏆 once when a goal becomes achieved; ❄️ once when a freeze is spent;
-  area emoji animate on hover/tap.
+  area emoji move on hover/tap (CSS motion; animated files only for 🔥 ❄️ 🎉 🏆 to keep size down).
 - **Reduced motion:** with `prefers-reduced-motion`, all animation stops and
   animated emoji show a static frame.
 
