@@ -226,7 +226,7 @@ button:active { transform: translateY(1px); }
   color: var(--text); transition: border-color .1s var(--snap);
 }
 .input:focus, .select:focus, .textarea:focus { border-color: var(--accent); }
-.input::placeholder, .textarea::placeholder { color: var(--g2); }
+.input::placeholder, .textarea::placeholder { color: var(--g1); }
 .textarea { resize: vertical; min-height: 64px; }
 .field { display: block; margin-bottom: 14px; }
 .field > span { display: block; margin-bottom: 6px; font: 11px var(--f-mono);
@@ -698,6 +698,8 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
     background: var(--bg); border-top: 1px solid var(--rule);
   }
+  /* a sheet without a sticky action bar still clears the home indicator */
+  #modalBody:not(:has(.modal-actions)) { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
   .toast { bottom: calc(72px + env(safe-area-inset-bottom)); max-width: calc(100% - 32px); }
   .input, .select, .textarea { font-size: 16px; }
 }
@@ -1214,6 +1216,12 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     return `<div class="segbar" aria-hidden="true">${out}</div>`;
   }
 
+  /** how many of `n` blocks to light for a 0-100 score: any score above 0 lights at least one */
+  function litBlocks(pct, n) {
+    const p = clamp(Number(pct) || 0, 0, 100);
+    return p > 0 ? Math.max(1, Math.round(p / 100 * n)) : 0;
+  }
+
   /* ---------- sparkline (single series, no axis) ---------- */
   function spark(values, opt) {
     const o = Object.assign({ w: 600, h: 44, color: null }, opt);
@@ -1391,7 +1399,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       </span>`).join('')}</div>`;
   }
 
-  window.Charts = { segments, spark, lines, legend, mount, esc };
+  window.Charts = { segments, litBlocks, spark, lines, legend, mount, esc };
 })();
 
 </script>
@@ -2785,7 +2793,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
       // 10 blocks per month, lit bottom-up by rounded tenths, same build as Tasks' week columns
       const monthCols = months.map(mo => {
-        const lit = mo.score == null ? 0 : mo.score > 0 ? Math.max(1, Math.round(mo.score / 10)) : 0;   // any activity lights a block
+        const lit = Charts.litBlocks(mo.score, 10);   // null = not started; any score above 0 lights a block
         let blocks = '';
         for (let b = 0; b < 10; b++) blocks += b < lit ? '<i class="on"></i>' : '<i></i>';
         const text = `${mo.label} ${mo.year}: ${mo.score == null ? 'not started' : mo.score + '%'}`;
