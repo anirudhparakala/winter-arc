@@ -38,7 +38,7 @@
   --rule-2:      #2e2e2e;
   --text:        #f2f2f2;
   --g1:          #8a8a8a;   /* body-text grey (4.5:1 on black) */
-  --g2:          #555555;   /* non-essential labels only */
+  --g2:          #555555;   /* rules and decoration only (~2.8:1): never real information */
   --accent:      #8ecbff;   /* lit states only */
   --accent-glow: rgba(142, 203, 255, .5);
   --on-accent:   #000000;   /* text/ink drawn on an accent fill */
@@ -105,7 +105,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
        stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* ---------- shared instrument utilities ---------- */
-.lb { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--g2); }
+.lb { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--g1); }
 .dotnum { font-family: var(--f-dot); font-weight: 900; }
 .mod { background: var(--panel); padding: 18px; }
 .mh { display: flex; justify-content: space-between; margin-bottom: 6px; }
@@ -182,7 +182,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 }
 
 @media print { .nav, .strip-r, .modal-root, .toast { display: none !important; } }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 /* ---------- generic ---------- */
 .card {
@@ -191,7 +191,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
   border-radius: 0;
   padding: 18px;
 }
-.card-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g2); }
+.card-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g1); }
 .row { display: flex; align-items: center; gap: 10px; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--g1); }
@@ -199,7 +199,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 .empty { padding: 26px; text-align: center; color: var(--g1); font: 11px var(--f-mono);
          letter-spacing: .12em; text-transform: uppercase; }
 .section-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase;
-                 color: var(--g2); margin: 24px 0 10px; }
+                 color: var(--g1); margin: 24px 0 10px; }
 .scroll-x { overflow-x: auto; }
 
 button:active { transform: translateY(1px); }
@@ -230,7 +230,7 @@ button:active { transform: translateY(1px); }
 .textarea { resize: vertical; min-height: 64px; }
 .field { display: block; margin-bottom: 14px; }
 .field > span { display: block; margin-bottom: 6px; font: 11px var(--f-mono);
-                text-transform: uppercase; letter-spacing: .12em; color: var(--g2); }
+                text-transform: uppercase; letter-spacing: .12em; color: var(--g1); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 :where(button, input, select, textarea, [tabindex]):focus-visible {
@@ -671,6 +671,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 }
 @keyframes pop { from { opacity: 0; transform: translateY(6px); } }
 @keyframes sheet { from { transform: translateY(100%); } }
+.modal:focus { outline: none; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .modal-head h2 { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g1); }
 .modal-actions { display: flex; gap: 9px; justify-content: flex-end; margin-top: 20px; }
@@ -739,7 +740,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 <!-- modal host -->
 <div class="modal-root" id="modalRoot" hidden>
   <div class="modal-backdrop" data-close></div>
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
     <div class="modal-head">
       <h2 id="modalTitle">Title</h2>
       <button class="icon-btn sm" data-close aria-label="Close">
@@ -827,6 +828,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   const COLORS = ['#3987e5','#d95926','#199e70','#c98500',
                   '#d55181','#008300','#9085e9','#e66767'];
 
+  const HEX6 = /^#[0-9a-fA-F]{6}$/;
   const KEY = 'winterArc.v1';
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
@@ -869,6 +871,13 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   let memoryOnly = false;        // true when localStorage is unavailable
   const listeners = [];
 
+  /** keep the unreadable save under KEY.corrupt (blocked/full storage is fine to ignore) */
+  function backupCorrupt(raw) {
+    try {
+      if (localStorage.getItem(KEY + '.corrupt') !== raw) localStorage.setItem(KEY + '.corrupt', raw);
+    } catch (e) { /* storage unavailable: nothing more we can do */ }
+  }
+
   function load() {
     let raw = null;
     try { raw = localStorage.getItem(KEY); }
@@ -879,6 +888,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       return migrate(parsed);
     } catch (e) {
       console.warn('Winter Arc: corrupt save, starting fresh.', e);
+      backupCorrupt(raw);      // the next commit overwrites KEY — keep the raw text recoverable
       return defaultState();
     }
   }
@@ -920,10 +930,11 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     out.mindset = s.mindset || {};
     migrateArcLength(out, s.settings || {});
     if (typeof out.freezeTokens !== 'number') out.freezeTokens = base.freezeTokens;
-    out.habits.forEach(h => {
+    out.habits.forEach((h, i) => {
       if (!h.cadence) h.cadence = 'daily';
       if (!h.target) h.target = 1;
-      if (!h.color) h.color = COLORS[0];
+      // colours end up in style="" attributes: only a plain #rrggbb is safe
+      if (!HEX6.test(h.color)) h.color = COLORS[i % COLORS.length];
       if (!h.createdAt) h.createdAt = out.settings.arcStart;
     });
     return out;
@@ -1433,6 +1444,10 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     target: '<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>'
   };
 
+  /* ---------------- media queries (read at call time, never cached) ---------------- */
+  const mq = q => !!(window.matchMedia && window.matchMedia(q).matches);
+  const reduceMotion = () => mq('(prefers-reduced-motion: reduce)');
+
   /* ---------------- modal ---------------- */
   const root  = document.getElementById('modalRoot');
   const title = document.getElementById('modalTitle');
@@ -1442,14 +1457,18 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
   /** onClose runs on cancel/Esc/backdrop as well as on close() after saving */
   function modal(heading, html, onMount, onClose) {
-    lastFocus = document.activeElement;
+    // a dialog opened over another (confirm) must hand focus back to the original opener
+    if (root.hidden) lastFocus = document.activeElement;
     onCloseHook = onClose || null;
     title.textContent = heading;
     body.innerHTML = html;
     root.hidden = false;
     if (onMount) onMount(body);
-    const first = body.querySelector('input, textarea, select, button');
+    // a touch device would pop the keyboard over the bottom sheet: focus the dialog itself there
+    const first = mq('(pointer: coarse)') ? null : body.querySelector('input, textarea, select, button');
+    const dlg = root.querySelector('.modal');
     if (first) first.focus();
+    else if (dlg && dlg.focus) dlg.focus({ preventScroll: true });
   }
 
   function close() {
@@ -1466,8 +1485,10 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     if (e.key === 'Escape' && !root.hidden) close();
   });
 
-  /** simple yes/no */
+  /** simple yes/no. It replaces the open dialog, so it inherits that dialog's onClose
+      hook (e.g. Settings reverting a previewed theme when the confirm is cancelled). */
   function confirm(message, onYes, yesLabel) {
+    const parentHook = onCloseHook;
     modal('Confirm', `
       <p class="muted" style="margin:0 0 4px;line-height:1.55">${esc(message)}</p>
       <div class="modal-actions">
@@ -1475,7 +1496,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         <button class="btn btn-primary" id="cfYes">${esc(yesLabel || 'Yes')}</button>
       </div>`, el => {
       el.querySelector('#cfYes').onclick = () => { close(); onYes(); };
-    });
+    }, parentHook);
   }
 
   /* ---------------- toast ---------------- */
@@ -1534,9 +1555,10 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     const has = (m, k) => Object.prototype.hasOwnProperty.call(m, k);
     if (!has(EMO, slug)) return '';
     const staticSrc = EMO[slug];
-    const real = o.anim && ANIM.has(slug) && has(EMO_ANIM, slug) && EMO_ANIM[slug];
+    // an APNG can't be paused by CSS, so under reduced motion serve the still image
+    const real = o.anim && !reduceMotion() && ANIM.has(slug) && has(EMO_ANIM, slug) && EMO_ANIM[slug];
     const src = real || staticSrc;
-    const cls = 'emo' + (o.lit ? '' : ' is-off') + (o.anim && !real ? ' is-anim' : '');
+    const cls = 'emo' + (o.lit ? '' : ' is-off') + (o.anim && !real && !reduceMotion() ? ' is-anim' : '');
     const alt = o.label ? ` alt="${esc(o.label)}"` : ' alt="" aria-hidden="true"';
     return `<img class="${cls}" src="${src}" width="${o.size}" height="${o.size}"${alt}>`;
   }
@@ -1630,7 +1652,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   }
 
   /* ---------------- haptics ---------------- */
-  let hapticLabel = null;
+  let hapticLabel = null, hapticInput = null;
   /** iOS 18+ fires a tick when a `switch` checkbox is toggled by a label click */
   function haptic() {
     try {
@@ -1638,21 +1660,28 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         hapticLabel = document.createElement('label');
         hapticLabel.setAttribute('aria-hidden', 'true');
         hapticLabel.style.cssText = 'position:fixed;left:-99px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden';
-        const input = document.createElement('input');
+        const input = hapticInput = document.createElement('input');
         input.type = 'checkbox';
         input.setAttribute('switch', '');
+        input.setAttribute('aria-hidden', 'true');
         input.tabIndex = -1;
         hapticLabel.appendChild(input);
         document.body.appendChild(hapticLabel);
       }
+      // the label click focuses its hidden input — hand focus back so keyboard users keep their place
+      const prev = document.activeElement;
       hapticLabel.click();
+      if (document.activeElement === hapticInput) {
+        if (prev && prev !== hapticInput && prev !== document.body && prev.focus && document.body.contains(prev)) {
+          prev.focus({ preventScroll: true });
+        }
+        if (document.activeElement === hapticInput) hapticInput.blur();
+      }
     } catch (e) { /* unsupported — no-op */ }
     try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) { /* ignore */ }
   }
 
   /* ---------------- celebrate ---------------- */
-  const reduceMotion = () =>
-    !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let celebrateTimer = null;
   function celebrate(slug) {
     if (reduceMotion()) return;
@@ -2921,10 +2950,12 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   let page = 'today';
   let lastPage = null;
   let pendingFocus = null;
+  let renderedDay = D.todayKey();   // the "today" the current view was drawn for
 
   /* ---------------- render ---------------- */
   function render() {
     const v = Views[page];
+    renderedDay = D.todayKey();
     // keep the reader where they were across a state commit (the window scrolls now)
     // (scroll positions belong to a page: arriving from another one starts clean)
     const same = page === lastPage;
@@ -2968,8 +2999,13 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   }
 
   /* ---------------- chrome ---------------- */
-  const tick = () => { clockEl.textContent = new Date().toTimeString().slice(0, 5); };
+  // an app resumed after midnight must not keep showing (and logging to) yesterday
+  const tick = () => {
+    clockEl.textContent = new Date().toTimeString().slice(0, 5);
+    if (D.todayKey() !== renderedDay) render();
+  };
   tick(); setInterval(tick, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
   nav.addEventListener('click', e => {
     const b = e.target.closest('[data-page]');
