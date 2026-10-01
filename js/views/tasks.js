@@ -6,64 +6,85 @@
   window.Views = window.Views || {};
 
   const SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  // categorical chart marks (not accent usage): fixed hues so a series keeps its colour
   const MIND = [
-    { key: 'energy',     label: 'Energy',     short: 'E', color: 'var(--series-2)' },
-    { key: 'focus',      label: 'Focus',      short: 'F', color: 'var(--series-1)' },
-    { key: 'motivation', label: 'Motivation', short: 'M', color: 'var(--series-3)' }
+    { key: 'energy',     label: 'Energy',     short: 'E', color: '#ff9a5c' },
+    { key: 'focus',      label: 'Focus',      short: 'F', color: '#8ecbff' },
+    { key: 'motivation', label: 'Motivation', short: 'M', color: '#7fe0b0' }
   ];
 
   let weekCursor = null;   // Date — start of the displayed week
 
   function weekStartOf(d) { return D.startOfWeek(d, Store.state.settings.weekStart); }
 
-  function dayCard(key, idx) {
+  /* The week the carousel was last auto-scrolled for. The page re-renders on every
+     toggle, so we only jump to today's card the first time a week is shown; after that
+     app.js's own scrollLeft restore keeps the reader's position. */
+  let scrolledFor = null;
+  // leaving the page forgets it, so coming back opens at today again
+  window.addEventListener('hashchange', () => {
+    if (location.hash !== '#tasks') scrolledFor = null;
+  });
+
+  /** 10-block control: tap block v to set v, tap the set block again to clear to 0 */
+  function mindControl(mm, key, value) {
+    let blocks = '';
+    for (let v = 1; v <= 10; v++) {
+      blocks += `<button type="button" data-v="${v}"${v <= value ? ' class="on"' : ''}
+                  aria-pressed="${v === value}" aria-label="${esc(mm.label)} ${v} of 10"></button>`;
+    }
+    return `<div class="mseg" role="group" data-mind="${mm.key}"
+                 aria-label="${esc(mm.label)} on ${esc(key)}">${blocks}</div>`;
+  }
+
+  function dayCard(key) {
     const d = D.parse(key);
-    const todayK = D.todayKey();
     const list = Store.tasksOf(key);
     const done = list.filter(t => t.done).length;
     const pct = Store.taskScore(key);
     const mind = Store.mindsetOf(key);
     const prev = D.addKey(key, -1);
+    // at most 10 blocks so a long list stays legible in a narrow card
+    const n = Math.min(list.length, 10);
+    const lit = list.length > 10 ? Math.round(done / list.length * 10) : done;
 
     return `
-      <div class="day-card${key === todayK ? ' is-today' : ''}" data-day="${key}">
+      <section class="day-card${key === D.todayKey() ? ' is-today' : ''}" data-day="${esc(key)}">
         <div class="day-head">
-          <b>${D.DAYS[d.getDay()]}</b>
-          <span>${D.shortDate(d)}</span>
+          <div><span class="lb dname">${SHORT[d.getDay()]}</span>
+               <span class="ddate">${esc(D.shortDate(d))}</span></div>
+          <b class="dotnum dpct">${pct}%</b>
         </div>
-        <div style="display:grid;place-items:center">
-          ${Charts.ring(pct, { size: 86, stroke: 8 })}
-        </div>
+        ${Charts.segments(lit, n, { max: 10 })}
 
-        <div class="card-label">Tasks</div>
-        <div style="display:flex;flex-direction:column;gap:5px">
+        <div class="dsec"><span class="lb">Tasks</span>
+          <span class="lb">${done}/${list.length}</span></div>
+        <div class="dlist">
           ${list.map(t => `
-            <div class="task-item${t.done ? ' is-done' : ''}" data-task="${t.id}">
+            <div class="drow${t.done ? ' is-done' : ''}" data-task="${esc(t.id)}">
               <button class="check${t.done ? ' is-done' : ''}" data-act="t"
                       aria-pressed="${t.done}" aria-label="${esc(t.text)}">${UI.ICON.check}</button>
-              <span class="task-text">${esc(t.text)}</span>
-              <button class="task-del" data-act="d" aria-label="Delete">${UI.ICON.x}</button>
+              <span class="dtext">${esc(t.text)}</span>
+              <button class="ddel" data-act="d" aria-label="Delete task">${UI.ICON.x}</button>
             </div>`).join('')}
         </div>
-        <input class="add-task" placeholder="+ Add task" data-add="${key}" data-i="${idx}">
+        <input class="dadd" placeholder="+ Add task" data-add="${esc(key)}"
+               aria-label="Add task on ${esc(key)}">
         ${(!list.length && Store.tasksOf(prev).length) ? `
-          <button class="btn btn-ghost btn-sm" data-act="copy"
-                  style="justify-content:flex-start">Copy yesterday's list</button>` : ''}
+          <button class="btn btn-ghost btn-sm dcopy" data-act="copy">Copy yesterday's list</button>` : ''}
 
-        <div class="mindset-box">
-          <div class="between">
-            <span class="card-label">Mindset</span>
-            <span class="dim" style="font-size:11px">${done}/${list.length} done</span>
-          </div>
+        <div class="dmind">
+          <div class="dsec"><span class="lb">Mindset</span></div>
           ${MIND.map(mm => `
-            <div class="mind-row">
-              <label title="${mm.label}" style="color:${mm.color}">${mm.short}</label>
-              <input type="range" min="0" max="10" value="${mind[mm.key] || 0}"
-                     data-mind="${mm.key}" aria-label="${mm.label} on ${key}">
-              <b>${mind[mm.key] || 0}</b>
+            <div class="mrow">
+              <div class="mtop">
+                <span class="mlab"><i style="background:${esc(mm.color)}"></i>${esc(mm.label)}</span>
+                <b class="mval">${mind[mm.key] || 0}</b>
+              </div>
+              ${mindControl(mm, key, mind[mm.key] || 0)}
             </div>`).join('')}
         </div>
-      </div>`;
+      </section>`;
   }
 
   Views.tasks = {
@@ -71,6 +92,7 @@
     render(el) {
       if (!weekCursor) weekCursor = weekStartOf(D.today());
       const start = weekCursor;
+      const weekKey = D.key(start);
       const keys = [];
       for (let i = 0; i < 7; i++) keys.push(D.key(D.add(start, i)));
       const endD = D.add(start, 6);
@@ -79,66 +101,59 @@
       const allTasks = keys.flatMap(k => Store.tasksOf(k));
       const doneAll = allTasks.filter(t => t.done).length;
       const weekPct = allTasks.length ? Math.round(doneAll / allTasks.length * 100) : 0;
-      const isThisWeek = D.key(weekStartOf(D.today())) === D.key(start);
+      const isThisWeek = D.key(weekStartOf(D.today())) === weekKey;
 
       const label = `${start.getDate()} ${D.MONTHS[start.getMonth()].slice(0,3)}` +
                     ` – ${endD.getDate()} ${D.MONTHS[endD.getMonth()].slice(0,3)} ${endD.getFullYear()}`;
 
-      const bars = keys.map((k, i) => {
+      // one column of 10 blocks per day, lit bottom-up by rounded tenths
+      const cols = keys.map(k => {
         const p = Store.taskScore(k);
         const n = Store.tasksOf(k).length;
-        return `<div class="wbar${k === todayK ? ' is-today' : ''}"
-                     title="${SHORT[i]}: ${n ? p + '% of ' + n + ' tasks' : 'no tasks'}">
-          <div class="wbar-track">
-            ${p > 0 ? `<div class="wbar-fill" style="height:${p}%"></div>` : ''}
-          </div>
-          <span>${SHORT[i]}</span></div>`;
+        const dn = SHORT[D.parse(k).getDay()];
+        const lit = Math.round(p / 10);
+        let blocks = '';
+        for (let b = 0; b < 10; b++) blocks += b < lit ? '<i class="on"></i>' : '<i></i>';
+        const text = `${dn}: ${n ? p + '% of ' + n + ' task' + (n === 1 ? '' : 's') : 'no tasks'}`;
+        return `<div class="wcol${k === todayK ? ' is-today' : ''}" title="${esc(text)}"
+                     role="img" aria-label="${esc(text)}">
+          <div class="wstack">${blocks}</div><span>${dn}</span></div>`;
       }).join('');
 
       el.innerHTML = `
-        <div class="tasks-top">
-          <div class="card">
-            <div class="between">
-              <div>
-                <div class="card-label">Week starting</div>
-                <div class="pill pill-accent" style="margin-top:6px">${esc(label)}</div>
-              </div>
-              <div class="row">
-                <button class="icon-btn" id="prevW" aria-label="Previous week">${UI.ICON.left}</button>
-                <button class="btn btn-sm" id="thisW">This week</button>
-                <button class="icon-btn" id="nextW" aria-label="Next week">${UI.ICON.right}</button>
+        <div class="ttop">
+          <section class="mod wkmod">
+            <div class="mh"><span class="lb">01 / Week of</span>
+              <span class="pill pill-accent">${esc(label)}</span></div>
+            <div class="row wnav">
+              <button class="icon-btn" id="prevW" aria-label="Previous week">${UI.ICON.left}</button>
+              <button class="btn btn-sm" id="thisW">This week</button>
+              <button class="icon-btn" id="nextW" aria-label="Next week">${UI.ICON.right}</button>
+            </div>
+            <div class="wbody">
+              <div class="wcols">${cols}</div>
+              <div class="wtotal">
+                <b class="dotnum">${weekPct}%</b>
+                <span class="lb">${doneAll}/${allTasks.length} completed</span>
               </div>
             </div>
-            <div class="between" style="margin-top:18px;gap:20px">
-              <div class="grow">
-                <div class="card-label">Overall progress</div>
-                <div class="wbars" style="margin-top:12px">${bars}</div>
-              </div>
-              <div style="text-align:center">
-                ${Charts.ring(weekPct, { size: 112, stroke: 10 })}
-                <div class="dim" style="font-size:11.5px;margin-top:8px">
-                  ${doneAll} / ${allTasks.length} completed</div>
-              </div>
-            </div>
-          </div>
+          </section>
 
-          <div class="card">
-            <div class="between">
-              <div class="card-label">Mindset tracker</div>
-              ${Charts.legend(MIND.map(m => ({ name: m.label, color: m.color })))}
-            </div>
-            <div class="chart" id="mindChart" style="margin-top:14px"></div>
-          </div>
+          <section class="mod mindmod">
+            <div class="mh"><span class="lb">02 / Mindset</span>
+              ${Charts.legend(MIND.map(m => ({ name: m.label, color: m.color })))}</div>
+            <div class="chart" id="mindChart"></div>
+          </section>
         </div>
 
-        <div class="week-board" id="board">
-          ${keys.map((k, i) => dayCard(k, i)).join('')}
+        <div class="week-board scroll-x" id="board">
+          ${keys.map(k => dayCard(k)).join('')}
         </div>`;
 
-      /* mindset chart — 3 validated categorical hues, legend + tooltip */
+      /* mindset chart — legend + tooltip; look is set in CSS (.mindmod) */
       Charts.lines(el.querySelector('#mindChart'), {
-        height: 176, yMax: 10,
-        labels: keys.map((k, i) => SHORT[i]),
+        height: 208, yMax: 10,
+        labels: keys.map(k => SHORT[D.parse(k).getDay()]),
         tipTitle: i => D.longDate(D.parse(keys[i])),
         series: MIND.map(m => ({
           name: m.label, color: m.color,
@@ -155,6 +170,19 @@
       const board = el.querySelector('#board');
 
       board.addEventListener('click', e => {
+        const mb = e.target.closest('.mseg button');
+        if (mb) {
+          const seg = mb.parentElement;
+          const key = seg.closest('[data-day]').dataset.day;
+          const field = seg.dataset.mind;
+          const v = parseInt(mb.dataset.v, 10);
+          UI.haptic();
+          // a commit re-renders synchronously, so queue the refocus first: it hands
+          // keyboard focus to the same block of the replaced control
+          App.focusAfterRender(`[data-day="${key}"] [data-mind="${field}"] [data-v="${v}"]`);
+          Store.setMindset(key, field, v === (Store.mindsetOf(key)[field] || 0) ? 0 : v);
+          return;
+        }
         const b = e.target.closest('[data-act]');
         if (!b) return;
         const key = b.closest('[data-day]').dataset.day;
@@ -171,21 +199,24 @@
       board.addEventListener('keydown', e => {
         const inp = e.target.closest('[data-add]');
         if (!inp || e.key !== 'Enter' || !inp.value.trim()) return;
+        App.focusAfterRender(`[data-add="${inp.dataset.add}"]`);   // queued before the sync re-render
         Store.addTask(inp.dataset.add, inp.value);
-        App.focusAfterRender(`[data-add="${inp.dataset.add}"]`);
       });
 
-      // live label while dragging, commit on release (avoids re-render thrash)
-      board.addEventListener('input', e => {
-        const r = e.target.closest('[data-mind]');
-        if (r) r.parentElement.querySelector('b').textContent = r.value;
-      });
-      board.addEventListener('change', e => {
-        const r = e.target.closest('[data-mind]');
-        if (!r) return;
-        const key = r.closest('[data-day]').dataset.day;
-        Store.setMindset(key, r.dataset.mind, parseInt(r.value, 10));
-      });
+      /* open on today's card the first time a week is shown (phone carousel, or a narrow
+         desktop board). app.js restores the old scrollLeft synchronously after this render,
+         so settle ours in a microtask (still before paint): it wins on a week change, and
+         is skipped on re-renders so the restored position stands. */
+      if (scrolledFor !== weekKey) {
+        scrolledFor = weekKey;
+        Promise.resolve().then(() => {
+          if (!board.isConnected) return;
+          const card = board.querySelector('.day-card.is-today');
+          board.scrollLeft = card
+            ? Math.max(0, card.offsetLeft - (board.clientWidth - card.offsetWidth) / 2)
+            : 0;
+        });
+      }
     }
   };
 })();
