@@ -255,6 +255,27 @@ test('a finished arc caps at the total', () => {
   assert.strictEqual(a.pct, 100);
 });
 
+test('arcDays of 1 is a single-day arc: end is the start, today is day 1 of 1', () => {
+  const f = dailyFixture({});
+  f.settings.arcStart = T;
+  f.settings.arcDays = 1;
+  const a = freshStore(f).Store.arc();
+  assert.strictEqual(a.total, 1);
+  assert.strictEqual(a.end, a.start);
+  assert.strictEqual(a.elapsed, 1);
+  assert.strictEqual(a.left, 0);
+  assert.strictEqual(a.pct, 100);
+});
+test('an absurd arcDays is clamped to the 3650-day maximum (design: clamp, not fallback)', () => {
+  const f = dailyFixture({});
+  f.settings.arcDays = 1e15;
+  const { Store } = freshStore(f);
+  assert.strictEqual(Store.state.settings.arcDays, 3650);
+  assert.strictEqual(Store.arc().total, 3650);
+  Store.state.settings.arcDays = 99999;                 // bypassing migrate, as a runtime edit could
+  assert.strictEqual(Store.arc().total, 3650);
+});
+
 console.log('\narc migration (months -> days)');
 function oldSave(startKey, months) {
   const f = dailyFixture({});
@@ -283,6 +304,16 @@ test('several month counts and start dates all match the old formula', () => {
     assert.strictEqual('arcMonths' in Store.state.settings, false);
   });
 });
+test('a month-end start keeps the old formula\'s day count (hard-coded anchor: 31)', () => {
+  assert.strictEqual(freshStore(oldSave('2026-01-31', 1)).Store.state.settings.arcDays, 31);
+  assert.strictEqual(oldArcDays('2026-01-31', 1), 31);
+});
+test('a huge arcMonths is clamped to 3650 days', () => {
+  const { Store } = freshStore(oldSave('2026-01-01', 100000));
+  assert.strictEqual(Store.state.settings.arcDays, 3650);
+  assert.strictEqual('arcMonths' in Store.state.settings, false);
+  assert.strictEqual(Store.arc().total, 3650);
+});
 test('a save that already has arcDays is left alone', () => {
   const f = oldSave('2026-01-01', 12);
   f.settings.arcDays = 45;
@@ -295,6 +326,20 @@ test('a save with neither field, or a bad value, gets 90', () => {
   assert.strictEqual(freshStore(oldSave('2026-01-01', 0)).Store.state.settings.arcDays, 90);
   const bad = oldSave('2026-01-01'); bad.settings.arcDays = -3;
   assert.strictEqual(freshStore(bad).Store.state.settings.arcDays, 90);
+});
+test('importJSON leaves an existing arcDays untouched', () => {
+  const { Store } = freshStore();
+  const f = oldSave('2026-01-01', 12);
+  f.settings.arcDays = 45;
+  Store.importJSON(JSON.stringify(f));
+  assert.strictEqual(Store.state.settings.arcDays, 45);
+  assert.strictEqual('arcMonths' in Store.state.settings, false);
+});
+test('importJSON of a backup with neither field gets 90', () => {
+  const { Store } = freshStore();
+  Store.importJSON(JSON.stringify(oldSave('2026-01-01')));
+  assert.strictEqual(Store.state.settings.arcDays, 90);
+  assert.strictEqual(Store.arc().total, 90);
 });
 test('importJSON migrates an old backup', () => {
   const { Store } = freshStore();

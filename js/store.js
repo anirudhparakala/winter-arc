@@ -129,22 +129,28 @@
   }
 
   const DEFAULT_ARC_DAYS = 90;
-  const validDays = n => Number.isInteger(n) && n >= 1;
+  const MAX_ARC_DAYS = 3650;
+  /** an integer >= 1 is a usable length, clamped to MAX_ARC_DAYS (so 1e15 becomes 3650);
+      anything else (NaN, 0, negative, fractional, non-number) is null and callers fall back to 90 */
+  const validDays = n => (Number.isInteger(n) && n >= 1) ? Math.min(n, MAX_ARC_DAYS) : null;
 
   /** Old saves stored the arc as `arcMonths`. Convert to the exact number of days that
-      month-based arc covered, drop the old field, and fall back to 90 for anything invalid. */
+      month-based arc covered, drop the old field, and fall back to 90 for anything invalid.
+      Any resulting length is clamped to 1..MAX_ARC_DAYS. */
   function migrateArcLength(out, raw) {
     const st = out.settings;
-    if (!validDays(raw.arcDays)) {
-      let days = DEFAULT_ARC_DAYS;
-      if (validDays(raw.arcMonths)) {
+    let days = validDays(raw.arcDays);
+    if (days === null) {
+      days = DEFAULT_ARC_DAYS;
+      const months = validDays(raw.arcMonths);   // every month is >= 28 days, so MAX months already exceeds MAX days
+      if (months !== null) {
         const d = D.parse(st.arcStart);
-        const end = new Date(d.getFullYear(), d.getMonth() + raw.arcMonths, d.getDate());
-        const n = D.diff(st.arcStart, D.key(D.add(end, -1))) + 1;
-        if (validDays(n)) days = n;
+        const end = new Date(d.getFullYear(), d.getMonth() + months, d.getDate());
+        const n = validDays(D.diff(st.arcStart, D.key(D.add(end, -1))) + 1);
+        if (n !== null) days = n;
       }
-      st.arcDays = days;
     }
+    st.arcDays = days;
     delete st.arcMonths;
   }
 
@@ -387,7 +393,7 @@
   /* ---------------- arc (the window every goal and rate lives in) ---------------- */
   function arc() {
     const st = state.settings.arcStart;
-    const days = validDays(state.settings.arcDays) ? state.settings.arcDays : DEFAULT_ARC_DAYS;
+    const days = validDays(state.settings.arcDays) || DEFAULT_ARC_DAYS;
     const endK = D.addKey(st, days - 1);
     const total = days;
     const elapsed = Math.min(total, Math.max(0, D.diff(st, D.todayKey()) + 1));
