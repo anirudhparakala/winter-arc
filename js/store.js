@@ -221,6 +221,21 @@
     try { emit(); } catch (e) { console.error('Winter Arc: a listener failed after sync.', e); }
   }
 
+  /** another tab saved: adopt its copy (so this tab cannot overwrite it with a stale one).
+      Never writes, never marks a local change, and never replaces good state with defaults
+      (empty, corrupt or unreadable storage is ignored). Returns true if the state changed. */
+  function reloadFromStorage() {
+    let raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return false; }
+    if (!raw) return false;
+    let next;
+    try { next = migrate(JSON.parse(raw)); } catch (e) { return false; }
+    if (JSON.stringify(next) === JSON.stringify(state)) return false;
+    state = next;
+    emit();
+    return true;
+  }
+
   /* ---------------- habit log ---------------- */
   function logOf(habitId) { return state.logs[habitId] || (state.logs[habitId] = {}); }
   function status(habitId, key) { return (state.logs[habitId] || {})[key] || null; }
@@ -457,7 +472,7 @@
     area: id => AREAS.find(a => a.id === id) || AREAS[0],
     subscribe(fn) { listeners.push(fn); },
     commit, persist,
-    snapshot, applySynced,
+    snapshot, applySynced, reloadFromStorage,
     onLocalChange(fn) { changeListeners.push(fn); },
 
     activeHabits, status, toggle, freeze, logOf,

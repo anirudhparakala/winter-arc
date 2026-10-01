@@ -531,5 +531,53 @@ test('onLocalChange fires for commit, importJSON and reset', () => {
   assert.strictEqual(n, 3);
 });
 
+console.log('\nreloadFromStorage (another tab saved)');
+test('reloadFromStorage adopts the value another tab saved: subscribers once, no local-change mark, nothing written', () => {
+  const kv = { 'winterArc.v1': JSON.stringify(dailyFixture({})) };
+  let writes = 0;
+  const ctx = { console: { log() {}, warn() {} },
+    localStorage: { getItem: k => (k in kv ? kv[k] : null), setItem: (k, v) => { writes++; kv[k] = String(v); } } };
+  ctx.window = ctx; vm.createContext(ctx); vm.runInContext(SRC, ctx);
+  const { Store } = ctx;
+  let renders = 0, changes = 0;
+  Store.subscribe(() => renders++); Store.onLocalChange(() => changes++);
+  const other = dailyFixture({}); other.habits[0].name = 'From the other tab'; other.freezeTokens = 4;
+  kv['winterArc.v1'] = JSON.stringify(other);            // the other tab wrote this
+  assert.strictEqual(Store.reloadFromStorage(), true);
+  assert.strictEqual(Store.state.habits[0].name, 'From the other tab');
+  assert.strictEqual(Store.state.freezeTokens, 4);
+  assert.strictEqual(renders, 1); assert.strictEqual(changes, 0); assert.strictEqual(writes, 0);
+});
+test('reloadFromStorage migrates what it reads (a bad colour cannot get in)', () => {
+  const kv = { 'winterArc.v1': JSON.stringify(dailyFixture({})) };
+  const ctx = storeOver(kv);
+  const other = dailyFixture({}); other.habits[0].color = 'url(x)';
+  kv['winterArc.v1'] = JSON.stringify(other);
+  ctx.Store.reloadFromStorage();
+  assert.ok(/^#[0-9a-fA-F]{6}$/.test(ctx.Store.state.habits[0].color));
+});
+test('reloadFromStorage with an unchanged save does not re-render', () => {
+  const kv = { 'winterArc.v1': JSON.stringify(dailyFixture({})) };
+  const ctx = storeOver(kv); let renders = 0; ctx.Store.subscribe(() => renders++);
+  ctx.Store.commit(() => {}); renders = 0;
+  assert.strictEqual(ctx.Store.reloadFromStorage(), false);
+  assert.strictEqual(renders, 0);
+});
+test('reloadFromStorage never wipes the live state: empty, corrupt or unreadable storage keeps it', () => {
+  const kv = { 'winterArc.v1': JSON.stringify(dailyFixture({})) };
+  const ctx = storeOver(kv); const before = JSON.stringify(ctx.Store.state); let renders = 0;
+  ctx.Store.subscribe(() => renders++);
+  delete kv['winterArc.v1']; assert.strictEqual(ctx.Store.reloadFromStorage(), false);
+  kv['winterArc.v1'] = '{not json'; assert.strictEqual(ctx.Store.reloadFromStorage(), false);
+  kv['winterArc.v1'] = JSON.stringify({ version: 1, habits: [null] }); assert.strictEqual(ctx.Store.reloadFromStorage(), false);
+  assert.strictEqual(JSON.stringify(ctx.Store.state), before); assert.strictEqual(renders, 0);
+  const blocked = { console: { log() {}, warn() {} }, localStorage: { getItem() { throw new Error('blocked'); }, setItem() {} } };
+  blocked.window = blocked; vm.createContext(blocked); vm.runInContext(SRC, blocked);
+  assert.strictEqual(blocked.Store.memoryOnly, true);
+  const bs = JSON.stringify(blocked.Store.state);
+  assert.strictEqual(blocked.Store.reloadFromStorage(), false);
+  assert.strictEqual(JSON.stringify(blocked.Store.state), bs); assert.strictEqual(blocked.Store.memoryOnly, true);
+});
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
