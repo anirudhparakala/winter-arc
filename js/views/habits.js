@@ -161,7 +161,8 @@
 
       // sparkline spans only the days that have happened, centred over their columns
       const sparkPct = (past.length / nDays * 100).toFixed(3);
-      const sparkPad = past.length ? (50 / past.length).toFixed(3) : 0;
+      // % padding resolves against the th (all nDays columns), so half a column is 50/nDays
+      const sparkPad = (50 / nDays).toFixed(3);
 
       el.innerHTML = `
         <div class="hstack">
@@ -266,7 +267,12 @@
         UI.onHold(el, '.cell:not([disabled])', cell => {
           const row = cell.closest('[data-habit]');
           if (!row) return;
-          if (!Store.freeze(row.dataset.habit, cell.dataset.k)) UI.toast('No freeze tokens left.');
+          const id = row.dataset.habit, k = cell.dataset.k;
+          const was = Store.status(id, k);
+          // a stray touch-hold must not silently swap a tick for a freeze (and spend a token)
+          if (was === true) { UI.toast('Already done.'); return; }
+          if (!Store.freeze(id, k)) { UI.toast('No freeze tokens left.'); return; }
+          if (was === 'freeze') UI.toast('Freeze removed.');
         });
       }
 

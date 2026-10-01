@@ -290,12 +290,11 @@ button:active { transform: translateY(1px); }
 }
 
 /* ---------- TODAY ---------- */
-/* hero-ring / hero-val / cdot are shared (Charts.ring, Habits) — not Today's own */
+/* hero-ring / hero-val are shared (Charts.ring) — not Today's own */
 .hero-ring { position: relative; display: grid; place-items: center; }
 .hero-ring .hero-val { position: absolute; text-align: center; }
 .hero-val b { display: block; font-size: 40px; font-weight: 750; letter-spacing: -.02em; }
 .hero-val span { font-size: 10px; letter-spacing: .18em; color: var(--text-muted); font-weight: 600; }
-.cdot { width: 7px; height: 7px; border-radius: 99px; flex: none; }
 .streak { display: inline-flex; align-items: center; gap: 6px; font: 700 15px var(--f-mono);
           color: var(--g1); font-variant-numeric: tabular-nums; }
 .streak.is-hot { color: var(--text); }
@@ -361,6 +360,7 @@ button:active { transform: translateY(1px); }
 .hstack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin-top: 8px;
           background: var(--rule); border: 1px solid var(--rule); }
 .hstack > .mod { min-width: 0; }
+.hstack .empty { color: var(--g1); }
 
 .hhead { display: grid; gap: 14px; }
 .hh-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
