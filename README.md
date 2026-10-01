@@ -89,12 +89,14 @@ Press **1–5** to jump between pages. Press **N** on Habits or Goals to add one
 - *Weekly* — a target like "Gym 5× per week". It counts as met once you hit 5.
 - *Monthly* — same idea over a calendar month.
 
-On the Habits matrix, **click a cell** to mark the day, **right-click** it to spend
-a freeze token, and **click a habit's name** to edit or delete it.
+On the Habits matrix, **click (or tap) a cell** to mark the day, **right-click** it
+(or **press and hold** it on a phone) to spend a freeze token, and **click a habit's
+name** to edit or delete it. The same hold or right-click works on Today's habit rows.
 
 **Freeze tokens** protect a streak on a day you genuinely couldn't show up. The
 streak survives, but the day isn't counted as completed in your percentages — so
-your consistency number stays honest. You start with 9; adjust them in Settings.
+your consistency number stays honest. You start with 9; change the count with the
+**Freezes** button on Today.
 
 **Streaks** count consecutive days (or weeks/months for periodic habits). Not having
 ticked *today* yet never breaks a streak — only a missed past day does.
@@ -120,6 +122,9 @@ a safety copy:
 - **Settings → Import backup** — loads one back, on any device.
 
 Worth exporting now and then. Clearing your browser's site data will wipe it.
+
+If a saved copy ever can't be read, the app starts fresh but first keeps the unreadable
+text under the key `winterArc.v1.corrupt` in the browser's storage, so it can be recovered.
 
 ---
 
@@ -154,9 +159,10 @@ The whole look is driven by CSS custom properties at the top of `css/style.css` 
 change `--accent` (the icy `#8ecbff`) and the entire app re-themes. There's a light
 theme in Settings too.
 
-The chart series colours (`--series-1` … `--series-8`) are a deliberately chosen set:
-they sit in a lightness band that reads on the dark surface and stay distinguishable
-under colour-blindness. If you swap them, keep that in mind.
+The mindset tracker's three series use `--m-energy`, `--m-focus` and `--m-motivation`
+(re-tuned for the light theme), and each habit's colour comes from the `COLORS` palette
+in `js/store.js`. They were chosen to stay distinguishable on the black surface and under
+colour-blindness; if you swap them, keep that in mind.
 
 After editing any file, re-run `npm run build` to refresh the single-file copy, and
 bump `CACHE` in `sw.js` so installed copies pick up the change. If you add a new
