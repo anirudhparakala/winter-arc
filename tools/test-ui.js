@@ -134,3 +134,17 @@ setTimeout(() => {
     console.log('ui helpers ok');
   }, 420);
 }, 560);
+
+/* ---------- design tokens: every var(--x) used anywhere must be defined ---------- */
+(function () {
+  const root = path.join(__dirname, '..');
+  const files = ['index.html', 'css/style.css', 'js/app.js', 'js/charts.js', 'js/ui.js',
+    ...fs.readdirSync(path.join(root, 'js', 'views')).map(f => 'js/views/' + f)];
+  const src = files.map(f => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+  const defined = new Set([...src.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
+  const used = new Set([...src.matchAll(/var\((--[\w-]+)/g)].map(m => m[1]));
+  const missing = [...used].filter(t => !defined.has(t));
+  assert.deepStrictEqual(missing, [], 'undefined CSS tokens: ' + missing.join(', '));
+  assert.ok(!/Charts\.ring|hero-ring/.test(src), 'progress ring was retired');
+  console.log('tokens ok');
+})();

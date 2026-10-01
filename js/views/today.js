@@ -145,7 +145,7 @@
     const list = Store.tasksOf(key);
     box.innerHTML = `
       <div class="mh"><span class="lb">02 / Today's tasks</span>
-        <span class="lb tcount">${list.filter(t => t.done).length}/${list.length}</span></div>
+        <span class="lb">${list.filter(t => t.done).length}/${list.length}</span></div>
       <div id="taskList">
         ${list.map(t => `
           <div class="trow${t.done ? ' is-done' : ''}" data-task="${esc(t.id)}">

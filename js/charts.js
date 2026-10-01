@@ -15,32 +15,6 @@
   const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 
-  /* ---------- progress ring (hero number — no tooltip needed) ---------- */
-  function ring(pct, opt) {
-    const o = Object.assign({ size: 150, stroke: 8, color: null, label: '', sub: '' }, opt);
-    const p = clamp(pct || 0, 0, 100);
-    const r = (o.size - o.stroke) / 2;
-    const c = 2 * Math.PI * r;
-    const col = o.color || 'var(--accent)';
-    return `
-      <div class="hero-ring" style="width:${o.size}px;height:${o.size}px">
-        <svg width="${o.size}" height="${o.size}" viewBox="0 0 ${o.size} ${o.size}"
-             role="img" aria-label="${esc(o.label || p + '%')} ${p} percent">
-          <circle cx="${o.size/2}" cy="${o.size/2}" r="${r}" fill="none"
-                  stroke="var(--rule-2)" stroke-width="${o.stroke}"/>
-          <circle cx="${o.size/2}" cy="${o.size/2}" r="${r}" fill="none"
-                  stroke="${col}" stroke-width="${o.stroke}" stroke-linecap="butt"
-                  stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}"
-                  transform="rotate(-90 ${o.size/2} ${o.size/2})"
-                  style="transition:stroke-dashoffset .3s var(--snap)"/>
-        </svg>
-        <div class="hero-val">
-          <b style="font-family:var(--f-dot);font-weight:900;font-size:${Math.round(o.size * .26)}px">${p}%</b>
-          ${o.sub ? `<span>${esc(o.sub)}</span>` : ''}
-        </div>
-      </div>`;
-  }
-
   /* ---------- segmented bar (one block per step; lit = done) ---------- */
   function segments(done, total, opt) {
     const max = Math.max(1, (opt && opt.max) || 31);
@@ -228,5 +202,5 @@
       </span>`).join('')}</div>`;
   }
 
-  window.Charts = { ring, segments, spark, lines, legend, mount, esc };
+  window.Charts = { segments, spark, lines, legend, mount, esc };
 })();

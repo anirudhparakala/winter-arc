@@ -59,7 +59,7 @@
 
         <div class="dsec"><span class="lb">Tasks</span>
           <span class="lb">${done}/${list.length}</span></div>
-        <div class="dlist">
+        <div>
           ${list.map(t => `
             <div class="drow${t.done ? ' is-done' : ''}" data-task="${esc(t.id)}">
               <button class="check${t.done ? ' is-done' : ''}" data-act="t"
@@ -76,7 +76,7 @@
         <div class="dmind">
           <div class="dsec"><span class="lb">Mindset</span></div>
           ${MIND.map(mm => `
-            <div class="mrow">
+            <div>
               <div class="mtop">
                 <span class="mlab"><i style="background:${esc(mm.color)}"></i>${esc(mm.label)}</span>
                 <b class="mval">${mind[mm.key] || 0}</b>

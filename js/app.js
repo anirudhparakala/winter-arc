@@ -115,7 +115,7 @@
       <p class="dim" style="font-size:12px;margin:0 0 16px;line-height:1.55">
         Current arc: <b>${esc(a.start)}</b> → <b>${esc(a.end)}</b> · ${a.total} days ·
         ${a.left} left.${Store.memoryOnly
-          ? '<br><b style="color:var(--warning)">This browser is blocking local storage — export a backup before you close the tab.</b>'
+          ? '<br><b style="color:var(--warn)">This browser is blocking local storage — export a backup before you close the tab.</b>'
           : '<br>Everything is saved in this browser only. Export a backup to move it to another device.'}
       </p>
 

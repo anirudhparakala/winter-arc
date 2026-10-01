@@ -175,7 +175,7 @@
                   <span>Avg <b>${avg}%</b></span>
                 </div>
               </div>
-              <div class="row hnav">
+              <div class="row">
                 <button class="icon-btn" id="prevM" aria-label="Previous month">${UI.ICON.left}</button>
                 <button class="icon-btn" id="nextM" aria-label="Next month">${UI.ICON.right}</button>
               </div>
@@ -198,7 +198,7 @@
             <div class="grid-wrap scroll-x">
               <table class="hgrid">
                 <thead>
-                  <tr class="trend-row">
+                  <tr>
                     <th class="col-habit"><span class="hlab">Trend</span></th>
                     <th colspan="${nDays}" class="trend-cell">
                       <div class="hspark" style="width:${sparkPct}%;padding:0 ${sparkPad}%"
@@ -217,7 +217,7 @@
             <div class="hleg">
               <span><i class="on"></i>Done</span>
               <span><i class="frz"></i>Frozen</span>
-              <span><i class="off"></i>Missed</span>
+              <span><i></i>Missed</span>
               <span><i class="now"></i>Today</span>
             </div>
             <p class="hnote">Tap a dot to log · hold (or right-click) to freeze ·
