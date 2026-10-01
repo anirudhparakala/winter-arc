@@ -2,6 +2,9 @@
    sync.js — Supabase sync engine (plain fetch, no library).
    Every external thing (fetch, storage, store, merge, timers) is injected so
    tools/test-sync.js can drive it against a fake server. See the cloud-sync spec.
+
+   syncNow({interactive:true}) may open the first-connect dialog (Sync now button, sign-in);
+   plain syncNow() (debounce, visibility, polling) never asks.
    ============================================================ */
 (function (root) {
   'use strict';
@@ -11,19 +14,28 @@
   const REFRESH_MARGIN_MS = 60000;
   const DEBOUNCE_MS = 3000;
   const MAX_ATTEMPTS = 4;
+  const FETCH_TIMEOUT_MS = 25000;
+  const BUSY_MSG = 'Supabase is busy — will retry';
+  const BAD_DATA_MSG = 'Cloud data could not be applied — nothing was changed';
+  const CHOOSE_MSG = 'Choose how to connect this device — tap Sync now';
 
   class NetError extends Error {}
   class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
   /** the user has to do something (sign in again, pick a connect option, fix setup) */
   class AttentionError extends Error {}
+  /** the work belongs to a sign-in that has since ended (sign-out / another sign-in): drop it silently */
+  class Stale extends Error {}
 
   function create(deps) {
     const fx = deps.fetch, storage = deps.storage, store = deps.store, merge = deps.merge;
     const config = deps.config || {};
     const now = deps.now || Date.now;
     const setT = deps.setTimeout || setTimeout, clearT = deps.clearTimeout || clearTimeout;
+    const fetchTimeoutMs = deps.fetchTimeoutMs || FETCH_TIMEOUT_MS;
     const listeners = [];
-    let running = null, again = false, timer = null;
+    let running = null, again = false, againInteractive = false, timer = null;
+    let gen = 0;                       // bumped by signIn/signOut; work started under an older value is discarded
+    const guard = () => { const g = gen; return () => { if (g !== gen) throw new Stale(); }; };
 
     const configured = () => !!(config.url && config.anonKey);
     const readJSON = k => { try { const v = storage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
@@ -45,20 +57,29 @@
     }
 
     /* ---------- http ---------- */
+    /** one request, with a timeout so a request that never answers cannot wedge the engine */
     async function http(method, path, o) {
       const opt = o || {};
-      let res;
-      try {
-        res = await fx(config.url.replace(/\/+$/, '') + path, {
+      const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      let tid = null;
+      const work = (async () => {
+        const res = await fx(config.url.replace(/\/+$/, '') + path, {
           method,
           headers: Object.assign({ apikey: config.anonKey, 'Content-Type': 'application/json',
             Authorization: 'Bearer ' + (opt.token || config.anonKey) }, opt.prefer ? { Prefer: opt.prefer } : {}),
-          body: opt.body === undefined ? undefined : JSON.stringify(opt.body)
+          body: opt.body === undefined ? undefined : JSON.stringify(opt.body),
+          signal: ctl ? ctl.signal : undefined
         });
-      } catch (e) { throw new NetError("Can't reach Supabase — changes are saved on this device"); }
-      let json = null;
-      try { json = await res.json(); } catch (e) { /* empty body */ }
-      return { status: res.status, ok: res.ok, json };
+        let json = null;
+        try { json = await res.json(); } catch (e) { /* empty or non-JSON body */ }
+        return { status: res.status, ok: res.ok, json };
+      })();
+      const timeout = new Promise((resolve, reject) => {
+        tid = setT(() => { try { if (ctl) ctl.abort(); } catch (e) { /* ignore */ } reject(new Error('timeout')); }, fetchTimeoutMs);
+      });
+      try { return await Promise.race([work, timeout]); }
+      catch (e) { throw new NetError("Can't reach Supabase — changes are saved on this device"); }
+      finally { if (tid !== null) clearT(tid); }
     }
     const httpErr = r => new HttpError(r.status, (r.json && (r.json.message || r.json.msg || r.json.error_description)) || ('Request failed (' + r.status + ')'));
 
@@ -70,12 +91,19 @@
       writeJSON(SESSION_KEY, s);
       return s;
     }
-    function dropTokens() { const s = readJSON(SESSION_KEY) || {}; writeJSON(SESSION_KEY, { email: s.email || null }); }
+    function dropTokens() { const s = readJSON(SESSION_KEY) || {}; writeJSON(SESSION_KEY, { email: s.email || null, userId: s.userId || null }); }
 
     async function refresh(s) {
+      const live = guard();
       const r = await http('POST', '/auth/v1/token?grant_type=refresh_token', { body: { refresh_token: s.refreshToken } });
+      live();
       if (r.status >= 500 || r.status === 429) throw httpErr(r);
-      if (!r.ok) { dropTokens(); throw new AttentionError('Sign in again'); }
+      if (!r.ok) {
+        const cur = readJSON(SESSION_KEY);                 // another tab may have rotated the token already
+        if (cur && cur.accessToken && cur.refreshToken && cur.refreshToken !== s.refreshToken) return cur;
+        dropTokens(); throw new AttentionError('Sign in again');
+      }
+      if (!r.json || !r.json.access_token) throw new HttpError(502, 'Unexpected reply');
       return saveSession(r.json, s.email);
     }
     async function ensureSession() {
@@ -97,13 +125,15 @@
     async function getRow(s) {
       const r = await api('GET', '/rest/v1/user_state?select=data,version&user_id=eq.' + enc(s.userId));
       if (!r.ok) throw httpErr(r);
-      return Array.isArray(r.json) && r.json[0] ? r.json[0] : null;
+      if (!Array.isArray(r.json)) throw new HttpError(502, 'Unexpected reply');   // never mistake junk for "no row"
+      return r.json[0] || null;
     }
     async function insertRow(s, data) {
       const r = await api('POST', '/rest/v1/user_state', { body: { user_id: s.userId, data, version: 1 }, prefer: 'return=representation' });
       if (r.status === 409) return false;
       if (!r.ok) throw httpErr(r);
-      return true;
+      if (r.status === 201 || (Array.isArray(r.json) && r.json.length === 1)) return true;
+      throw new HttpError(502, 'Unexpected reply');
     }
     /** compare-and-set: true only if the row still had `fromVersion` */
     async function pushCAS(s, data, fromVersion) {
@@ -112,57 +142,74 @@
       if (!r.ok) throw httpErr(r);
       return Array.isArray(r.json) && r.json.length === 1;
     }
-    const saveBase = (version, data) => writeJSON(BASE_KEY, { version, data });
+
+    /** a base belongs to one account; one without (or with another) userId counts as no base */
+    function readBase(userId) {
+      const b = readJSON(BASE_KEY);
+      return b && userId && b.userId === userId && typeof b.version === 'number' && b.data ? b : null;
+    }
+    const saveBase = (userId, version, data) => writeJSON(BASE_KEY, { userId, version, data });
 
     /* ---------- one sync pass ---------- */
-    async function run() {
-      const s = await ensureSession();
+    async function run(live, interactive) {
+      const s = await ensureSession(); live();
+      // "base" = the last state both sides agreed on. Once we apply a merge locally, local already
+      // contains the remote's changes, so the base advances to that remote (and is persisted at once):
+      // a failed or lost push must never make the next run merge against the old base, because
+      // Merge.three applies deltas to freezeTokens and would count the remote's spend twice.
+      let base = readBase(s.userId);
+      const setBase = (version, data) => { saveBase(s.userId, version, data); base = { version, data }; };
       let chosen = null;                                   // the first-connect answer survives a lost race
-      // Working base: the stored base, advanced to the remote we merged against whenever we applied a
-      // merge locally and then lost the compare-and-set race. Local now contains that remote's
-      // changes, so re-merging against the ORIGINAL base would count its freeze-token spend twice
-      // (Merge.three applies deltas to freezeTokens). The PERSISTED base changes only on success.
-      let workBase = readJSON(BASE_KEY);
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        const row = await getRow(s);
+        const row = await getRow(s); live();
         const local = store.snapshot();
         if (!row) {
-          if (await insertRow(s, local)) { saveBase(1, local); return 'uploaded'; }
+          const ok = await insertRow(s, local); live();
+          if (ok) { setBase(1, local); return 'uploaded'; }
           continue;
         }
         if (!merge.isState(row.data)) throw new AttentionError('The cloud data looks unreadable — nothing was changed');
-        const base = workBase;
         if (!base) {
-          if (merge.isPristine(local)) { store.applySynced(row.data); saveBase(row.version, store.snapshot()); return 'downloaded'; }
+          if (merge.isPristine(local)) { store.applySynced(row.data); setBase(row.version, store.snapshot()); return 'downloaded'; }
           if (merge.isPristine(row.data)) {
-            if (await pushCAS(s, local, row.version)) { saveBase(row.version + 1, local); return 'uploaded'; }
+            const ok = await pushCAS(s, local, row.version); live();
+            if (ok) { setBase(row.version + 1, local); return 'uploaded'; }
             continue;
           }
-          if (!chosen) chosen = deps.askFirstConnect ? await deps.askFirstConnect() : null;
-          if (!chosen) throw new AttentionError('Choose how to connect this device — tap Sync now');
-          if (chosen === 'cloud') { store.applySynced(row.data); saveBase(row.version, store.snapshot()); return 'downloaded'; }
+          if (!chosen) {
+            if (!interactive) throw new AttentionError(CHOOSE_MSG);   // background triggers never open the dialog
+            chosen = deps.askFirstConnect ? await deps.askFirstConnect() : null; live();
+            if (!chosen) throw new AttentionError(CHOOSE_MSG);
+            attempt--; continue;                                      // the user may have edited meanwhile: re-read both sides
+          }
+          if (chosen === 'cloud') { store.applySynced(row.data); setBase(row.version, store.snapshot()); return 'downloaded'; }
           if (chosen === 'device') {
-            if (await pushCAS(s, local, row.version)) { saveBase(row.version + 1, local); return 'uploaded'; }
+            const ok = await pushCAS(s, local, row.version); live();
+            if (ok) { setBase(row.version + 1, local); return 'uploaded'; }
             continue;
           }
-          store.applySynced(merge.firstConnect(local, row.data));        // 'merge'
+          store.applySynced(merge.firstConnect(local, row.data));     // 'merge'
+          setBase(row.version, row.data);                             // local now includes the cloud copy
           const data = store.snapshot();
-          if (await pushCAS(s, data, row.version)) { saveBase(row.version + 1, data); return 'merged'; }
+          const ok = await pushCAS(s, data, row.version); live();
+          if (ok) { setBase(row.version + 1, data); return 'merged'; }
           continue;
         }
         if (row.version === base.version) {
           if (merge.equal(local, base.data)) return 'clean';
-          if (await pushCAS(s, local, row.version)) { saveBase(row.version + 1, local); return 'pushed'; }
+          const ok = await pushCAS(s, local, row.version); live();
+          if (ok) { setBase(row.version + 1, local); return 'pushed'; }
           continue;
         }
         const merged = merge.three(base.data, local, row.data);
         let data = merged;
         if (!merge.equal(merged, local)) { store.applySynced(merged); data = store.snapshot(); }
-        if (merge.equal(data, row.data)) { saveBase(row.version, data); return 'pulled'; }
-        if (await pushCAS(s, data, row.version)) { saveBase(row.version + 1, data); return 'merged'; }
-        workBase = { version: row.version, data: row.data };             // lost the race: local now includes this remote
+        if (merge.equal(data, row.data)) { setBase(row.version, data); return 'pulled'; }
+        setBase(row.version, row.data);                               // local now includes this remote
+        const ok = await pushCAS(s, data, row.version); live();
+        if (ok) { setBase(row.version + 1, data); return 'merged'; }
       }
-      throw new HttpError(409, 'Busy — will retry');
+      throw new HttpError(409, BUSY_MSG);
     }
 
     function report(e) {
@@ -171,19 +218,28 @@
       if (e instanceof HttpError && (e.status >= 500 || e.status === 429 || e.status === 409))
         return setStatus({ state: 'pending', message: 'Supabase is busy — will retry (' + e.status + ')' });
       if (e instanceof HttpError) return setStatus({ state: 'attention', message: 'Setup problem: ' + e.message });
-      return setStatus({ state: 'attention', message: (e && e.message) || 'Sync failed' });
+      return setStatus({ state: 'attention', message: BAD_DATA_MSG });   // never show raw exception text
     }
 
-    function syncNow() {
+    /** opts.interactive: this call may open the first-connect dialog (Sync now button, sign-in).
+        Background triggers (debounce, visibility, polling) call syncNow() with no options and never ask. */
+    function syncNow(opts) {
       if (!configured() || !hasSession()) return Promise.resolve('skipped');
-      if (running) { again = true; return running; }
+      const wantAsk = !!(opts && opts.interactive);
+      if (running) { again = true; if (wantAsk) againInteractive = true; return running; }
+      let interactive = wantAsk;
       running = (async () => {
         let out = 'clean';
         try {
           do {
             again = false;
+            if (!configured() || !hasSession()) { out = 'skipped'; break; }
+            const g = gen, live = guard(), ask = interactive || againInteractive;
+            interactive = false; againInteractive = false;
             setStatus({ state: 'syncing', message: 'Syncing…' });
-            out = await run();
+            try { out = await run(live, ask); }
+            catch (e) { if (g !== gen) { out = 'skipped'; continue; } throw e; }   // signed out / re-signed in meanwhile
+            if (g !== gen) { out = 'skipped'; continue; }
             setStatus({ state: 'idle', message: 'Synced', lastSyncedAt: now(), email: (readJSON(SESSION_KEY) || {}).email || st.email });
           } while (again);
           return out;
@@ -205,34 +261,44 @@
     async function signIn(email, password) {
       if (!configured()) throw new Error('Sync is not configured yet');
       const r = await http('POST', '/auth/v1/token?grant_type=password', { body: { email, password } });
-      if (r.status === 400 || r.status === 401) throw new Error('Wrong email or password');
-      if (!r.ok) throw httpErr(r);
+      if (!r.ok || !r.json || !r.json.access_token) {
+        const code = String((r.json && (r.json.error_code || r.json.error)) || '');
+        if ((r.status === 400 || r.status === 401) && /invalid_grant|invalid_credentials/.test(code)) throw new Error('Wrong email or password');
+        throw new Error(r.status === 429 ? 'Too many attempts — wait a minute and try again' : 'Sign-in failed (' + r.status + ')');
+      }
+      gen++;                                               // anything still running belongs to the previous sign-in
+      const prev = readJSON(SESSION_KEY);
+      if (prev && prev.userId && r.json.user && prev.userId !== r.json.user.id) drop(BASE_KEY);   // another account: its base is not ours
       saveSession(r.json, email);
       setStatus({ state: 'idle', message: 'Signed in', email });
-      return syncNow();
+      return syncNow({ interactive: true });
     }
 
     async function signOut() {
+      gen++;
       const s = readJSON(SESSION_KEY);
-      if (s && s.accessToken && configured()) { try { await http('POST', '/auth/v1/logout', { token: s.accessToken }); } catch (e) { /* offline: still sign out locally */ } }
       drop(SESSION_KEY); drop(BASE_KEY);
       setStatus({ state: configured() ? 'signedOut' : 'unconfigured', message: 'Signed out', email: null, lastSyncedAt: null });
+      if (s && s.accessToken && configured()) { try { await http('POST', '/auth/v1/logout', { token: s.accessToken }); } catch (e) { /* offline: already signed out locally */ } }
     }
 
     /** used after Reset: make the cloud copy equal this device, whatever the cloud holds */
     async function overwriteCloud() {
       if (!configured() || !hasSession()) return false;
       if (running) await running;
+      const live = guard();
       try {
-        const s = await ensureSession();
+        const s = await ensureSession(); live();
         for (let i = 0; i < MAX_ATTEMPTS; i++) {
-          const row = await getRow(s);
+          const row = await getRow(s); live();
           const local = store.snapshot();
-          if (!row) { if (await insertRow(s, local)) { saveBase(1, local); setStatus({ state: 'idle', message: 'Synced', lastSyncedAt: now() }); return true; } continue; }
-          if (await pushCAS(s, local, row.version)) { saveBase(row.version + 1, local); setStatus({ state: 'idle', message: 'Synced', lastSyncedAt: now() }); return true; }
+          const done = () => { saveBase(s.userId, row ? row.version + 1 : 1, local); setStatus({ state: 'idle', message: 'Synced', lastSyncedAt: now() }); return true; };
+          if (!row) { const ok = await insertRow(s, local); live(); if (ok) return done(); continue; }
+          const ok = await pushCAS(s, local, row.version); live();
+          if (ok) return done();
         }
-        throw new HttpError(409, 'Busy — will retry');
-      } catch (e) { report(e); return false; }
+        throw new HttpError(409, BUSY_MSG);
+      } catch (e) { if (e instanceof Stale) return false; report(e); return false; }
     }
 
     return { status: () => st, onStatus: fn => listeners.push(fn), isConfigured: configured, isSignedIn: hasSession,
