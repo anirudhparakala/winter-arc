@@ -129,6 +129,10 @@ keep a safety copy:
 Worth exporting now and then — even with sync on. Clearing your browser's site data will
 wipe the local copy, and a backup file is the one thing that no sync mistake can touch.
 
+If you have the app open in **two tabs or windows** of the same browser, each one picks up
+the other's saves straight away (even with sync off), so an older tab can no longer
+overwrite newer data.
+
 If a saved copy ever can't be read, the app starts fresh but first keeps the unreadable
 text under the key `winterArc.v1.corrupt` in the browser's storage, so it can be recovered.
 
@@ -169,8 +173,11 @@ to Supabase with plain `fetch`. The theme (dark/light) is per device and never s
   go back online, every minute while the app is visible, and a few seconds after you edit.
 - The first time a device connects, if **both** it and the cloud already hold data, you are
   asked once: **Merge both** (recommended), **Use the cloud copy**, or **Use this device**.
+  If you dismiss that dialog, background syncs won't retry on their own — open Settings and
+  tap **Sync now** to choose.
 - **Reset everything** while signed in also erases your cloud copy, and your other devices
-  will be erased on their next sync. Signed out, it only affects this device.
+  will be erased on their next sync. Signed out, it only affects this device. If you reset
+  while offline, the cloud copy is overwritten at the next successful sync.
 - Importing a backup is just another edit — it syncs like any other change.
 
 ### Good to know

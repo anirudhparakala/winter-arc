@@ -44,7 +44,10 @@ assert.ok(/fetch\(e\.request,\s*\{\s*cache:\s*'no-cache'\s*\}\)/.test(sw), 'stal
 // cloud sync: the new shell files are precached, and Supabase (cross-origin) calls are never intercepted
 ['js/merge.js', 'js/sync-config.js', 'js/sync.js'].forEach(f => assert.ok(shell.includes(f), 'not cached: ' + f));
 assert.ok(/new URL\(e\.request\.url\)\.origin\s*!==\s*self\.location\.origin/.test(sw), 'sw must not intercept cross-origin requests');
-assert.ok(sw.indexOf('.origin') < sw.indexOf('e.respondWith'), 'the cross-origin return must come before respondWith');
+// ...and that return is the first thing the fetch listener does, before it can respondWith
+const fetchBody = sw.slice(sw.indexOf("addEventListener('fetch'"));
+assert.ok(/^addEventListener\('fetch',\s*e\s*=>\s*\{\s*if \(new URL\(e\.request\.url\)\.origin\s*!==\s*self\.location\.origin\)\s*return;/.test(fetchBody),
+  'the fetch listener must start with the cross-origin return, before any respondWith');
 
 // the single file carries the sync code and config, and still has no external references
 assert.ok(html.includes('window.SYNC_CONFIG'), 'sync-config not inlined');
