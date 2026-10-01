@@ -1,6 +1,6 @@
 /* Service worker — makes Winter Arc installable and usable offline.
    Bump CACHE when you change any shell file.                            */
-const CACHE = 'winter-arc-v6';
+const CACHE = 'winter-arc-v7';
 const SHELL = [
   './',
   'index.html',
