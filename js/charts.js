@@ -16,7 +16,7 @@
 
   /* ---------- progress ring (hero number — no tooltip needed) ---------- */
   function ring(pct, opt) {
-    const o = Object.assign({ size: 150, stroke: 13, color: null, label: '', sub: '' }, opt);
+    const o = Object.assign({ size: 150, stroke: 8, color: null, label: '', sub: '' }, opt);
     const p = clamp(pct || 0, 0, 100);
     const r = (o.size - o.stroke) / 2;
     const c = 2 * Math.PI * r;
@@ -26,18 +26,28 @@
         <svg width="${o.size}" height="${o.size}" viewBox="0 0 ${o.size} ${o.size}"
              role="img" aria-label="${esc(o.label || p + '%')} ${p} percent">
           <circle cx="${o.size/2}" cy="${o.size/2}" r="${r}" fill="none"
-                  stroke="var(--surface-3)" stroke-width="${o.stroke}"/>
+                  stroke="var(--rule-2)" stroke-width="${o.stroke}"/>
           <circle cx="${o.size/2}" cy="${o.size/2}" r="${r}" fill="none"
-                  stroke="${col}" stroke-width="${o.stroke}" stroke-linecap="round"
+                  stroke="${col}" stroke-width="${o.stroke}" stroke-linecap="butt"
                   stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}"
                   transform="rotate(-90 ${o.size/2} ${o.size/2})"
-                  style="transition:stroke-dashoffset .5s ease"/>
+                  style="transition:stroke-dashoffset .3s var(--snap)"/>
         </svg>
         <div class="hero-val">
-          <b style="font-size:${Math.round(o.size * .26)}px">${p}%</b>
+          <b style="font-family:var(--f-dot);font-weight:900;font-size:${Math.round(o.size * .26)}px">${p}%</b>
           ${o.sub ? `<span>${esc(o.sub)}</span>` : ''}
         </div>
       </div>`;
+  }
+
+  /* ---------- segmented bar (one block per step; lit = done) ---------- */
+  function segments(done, total, opt) {
+    const max = Math.max(1, (opt && opt.max) || 31);
+    const n = Math.max(1, Math.min(Math.floor(total) || 0, max));
+    const on = clamp(Math.floor(done) || 0, 0, n);
+    let out = '';
+    for (let i = 0; i < n; i++) out += i < on ? '<i class="on"></i>' : '<i></i>';
+    return `<div class="segbar" aria-hidden="true">${out}</div>`;
   }
 
   /* ---------- sparkline (single series, no axis) ---------- */
@@ -213,5 +223,5 @@
       </span>`).join('')}</div>`;
   }
 
-  window.Charts = { ring, spark, lines, legend, mount, esc };
+  window.Charts = { ring, segments, spark, lines, legend, mount, esc };
 })();

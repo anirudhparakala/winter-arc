@@ -95,9 +95,144 @@
     return () => picked;
   }
 
-  function streakChip(n) {
-    return `<span class="streak${n ? '' : ' is-zero'}">${ICON.flame}${n}</span>`;
+  /* ---------------- emoji ----------------
+     Literal path maps (not string concatenation) so tools/build.js can find
+     and inline every referenced file. */
+  const EMO = {
+    fire: 'assets/emoji/fire.png', snowflake: 'assets/emoji/snowflake.png',
+    star: 'assets/emoji/star.png', party: 'assets/emoji/party.png',
+    trophy: 'assets/emoji/trophy.png', health: 'assets/emoji/health.png',
+    career: 'assets/emoji/career.png', finance: 'assets/emoji/finance.png',
+    relations: 'assets/emoji/relations.png', romance: 'assets/emoji/romance.png',
+    spirit: 'assets/emoji/spirit.png', home: 'assets/emoji/home.png',
+    travel: 'assets/emoji/travel.png', fun: 'assets/emoji/fun.png',
+    community: 'assets/emoji/community.png'
+  };
+  const EMO_ANIM = {
+    fire: 'assets/emoji/fire-anim.png',
+    snowflake: 'assets/emoji/snowflake-anim.png',
+    party: 'assets/emoji/party-anim.png'
+  };
+  /** slugs that have an animated (APNG) file; everything else falls back to CSS */
+  const ANIM = new Set(['fire', 'snowflake', 'party']);
+
+  /** <img> for a 3D emoji. anim without an -anim file -> static + `is-anim` CSS fallback */
+  function emoji(slug, opt) {
+    const o = Object.assign({ lit: true, anim: false, size: 20, label: '' }, opt);
+    const staticSrc = EMO[slug];
+    if (!staticSrc) return '';
+    const real = o.anim && ANIM.has(slug) && EMO_ANIM[slug];
+    const src = real || staticSrc;
+    const cls = 'emo' + (o.lit ? '' : ' is-off') + (o.anim && !real ? ' is-anim' : '');
+    const alt = o.label ? ` alt="${esc(o.label)}"` : ' alt="" aria-hidden="true"';
+    return `<img class="${cls}" src="${src}" width="${o.size}" height="${o.size}"${alt}>`;
   }
 
-  window.UI = { ICON, modal, close, confirm, toast, colorSwatches, bindSwatches, streakChip };
+  function streakChip(n) {
+    const hot = n >= 3;
+    return `<span class="streak${hot ? ' is-hot' : ''}">` +
+      emoji('fire', { lit: hot, anim: hot, size: 18 }) +
+      `${String(n).padStart(2, '0')}</span>`;
+  }
+
+  /* ---------------- long-press ---------------- */
+  /** fn(target, event) fires once after a 500 ms touch/pen hold (or on mouse
+   *  right-click). A hold swallows the click that follows it. */
+  function onHold(container, selector, fn) {
+    const style = document.createElement('style');
+    container.setAttribute('data-hold', '');
+    style.textContent = `[data-hold] :is(${selector}){-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}`;
+    document.head.appendChild(style);
+
+    let timer = null, sx = 0, sy = 0, fired = false, ptype = '';
+    const cancel = () => { clearTimeout(timer); timer = null; };
+
+    container.addEventListener('pointerdown', e => {
+      ptype = e.pointerType;
+      fired = false;
+      if (e.pointerType === 'mouse') return;
+      const target = e.target.closest && e.target.closest(selector);
+      if (!target || !container.contains(target)) return;
+      sx = e.clientX; sy = e.clientY;
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        fired = true;
+        container._suppressClick = true;
+        // cleared shortly after pointerup/pointercancel (below) so a stale flag
+        // can't eat some later, unrelated tap
+        fn(target, e);
+      }, 500);
+    });
+    container.addEventListener('pointermove', e => {
+      if (timer && Math.hypot(e.clientX - sx, e.clientY - sy) > 8) cancel();
+    });
+    ['pointerup', 'pointercancel'].forEach(t => container.addEventListener(t, () => {
+      cancel();
+      if (fired) setTimeout(() => { container._suppressClick = false; }, 350);
+    }));
+    container.addEventListener('contextmenu', e => {
+      const target = e.target.closest && e.target.closest(selector);
+      if (!target || !container.contains(target)) return;
+      e.preventDefault();                  // no native menu on matched elements
+      if (ptype === 'mouse' || ptype === '') fn(target, e);
+    });
+    container.addEventListener('click', e => {
+      if (!container._suppressClick) return;
+      container._suppressClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+  }
+
+  /* ---------------- haptics ---------------- */
+  let hapticLabel = null;
+  /** iOS 18+ fires a tick when a `switch` checkbox is toggled by a label click */
+  function haptic() {
+    try {
+      if (!hapticLabel) {
+        hapticLabel = document.createElement('label');
+        hapticLabel.setAttribute('aria-hidden', 'true');
+        hapticLabel.style.cssText = 'position:fixed;left:-99px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.setAttribute('switch', '');
+        input.tabIndex = -1;
+        hapticLabel.appendChild(input);
+        document.body.appendChild(hapticLabel);
+      }
+      hapticLabel.click();
+    } catch (e) { /* unsupported — no-op */ }
+    try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) { /* ignore */ }
+  }
+
+  /* ---------------- celebrate ---------------- */
+  const reduceMotion = () =>
+    !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let celebrateTimer = null;
+  function celebrate(slug) {
+    if (reduceMotion()) return;
+    const old = document.querySelector('.celebrate');
+    if (old) old.remove();
+    clearTimeout(celebrateTimer);
+    const el = document.createElement('div');
+    el.className = 'celebrate';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = emoji(slug, { anim: true, size: 120 });
+    document.body.appendChild(el);
+    celebrateTimer = setTimeout(() => el.remove(), 1600);
+  }
+
+  /** ids: day100:<dateKey>, goal:<goalId>, freeze:<habitId>:<dateKey> */
+  function celebrateOnce(id, slug) {
+    const key = 'cel:' + id;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch (e) { /* storage blocked: still celebrate */ }
+    celebrate(slug);
+  }
+
+  window.UI = { ICON, ANIM, modal, close, confirm, toast, colorSwatches, bindSwatches,
+                emoji, streakChip, onHold, haptic, celebrate, celebrateOnce };
 })();
