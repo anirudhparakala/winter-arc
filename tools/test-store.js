@@ -482,5 +482,44 @@ test('fresh install seeds the 7 default habits', () => {
   assert.strictEqual(gym.cadence, 'weekly'); assert.strictEqual(gym.target, 5);
 });
 
+console.log('\nsync hooks');
+test('snapshot drops settings.theme and is a deep copy', () => {
+  const c = freshStore(); const s = c.Store.snapshot();
+  assert.ok(!('theme' in s.settings));
+  s.habits[0].name = 'changed';
+  assert.notStrictEqual(c.Store.state.habits[0].name, 'changed');
+});
+test('snapshot does not mutate the live state (theme still there)', () => {
+  const c = freshStore(); c.Store.snapshot();
+  assert.strictEqual(c.Store.state.settings.theme, 'dark');
+});
+test('applySynced keeps the local theme, migrates, persists and re-renders without marking a local change', () => {
+  const c = freshStore();
+  c.Store.commit(s => { s.settings.theme = 'light'; });
+  let changes = 0, renders = 0;
+  c.Store.onLocalChange(() => changes++); c.Store.subscribe(() => renders++);
+  const snap = c.Store.snapshot(); snap.habits[0].color = 'url(x)'; snap.habits[0].name = 'Synced';
+  c.Store.applySynced(snap);
+  assert.strictEqual(c.Store.state.settings.theme, 'light');
+  assert.strictEqual(c.Store.state.habits[0].name, 'Synced');
+  assert.notStrictEqual(c.Store.state.habits[0].color, 'url(x)');       // migrate ran
+  assert.strictEqual(changes, 0); assert.strictEqual(renders, 1);
+});
+test('applySynced with a snapshot that has no theme leaves the theme the user had', () => {
+  const c = freshStore();
+  c.Store.commit(s => { s.settings.theme = 'light'; });
+  const snap = c.Store.snapshot();
+  assert.ok(!('theme' in snap.settings));
+  c.Store.applySynced(snap);
+  assert.strictEqual(c.Store.state.settings.theme, 'light');
+});
+test('onLocalChange fires for commit, importJSON and reset', () => {
+  const c = freshStore(); let n = 0; c.Store.onLocalChange(() => n++);
+  c.Store.commit(s => { s.freezeTokens = 5; });
+  c.Store.importJSON(c.Store.exportJSON());
+  c.Store.reset();
+  assert.strictEqual(n, 3);
+});
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

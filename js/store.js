@@ -192,11 +192,31 @@
 
   function emit() { listeners.forEach(fn => fn()); }
 
+  const changeListeners = [];
+  /** local edits only (commit/import/reset) — not remote data applied by sync */
+  function markChanged() { changeListeners.forEach(fn => fn()); }
+
   /** mutate + save + re-render */
   function commit(fn) {
     fn(state);
     persist();
     emit();
+    markChanged();
+  }
+
+  /** the state as it is synced: a deep copy, without the per-device theme */
+  function snapshot() {
+    const c = JSON.parse(JSON.stringify(state));
+    delete c.settings.theme;
+    return c;
+  }
+  /** replace the state with data that came from the cloud (theme stays this device's own) */
+  function applySynced(snap) {
+    const theme = state.settings.theme;
+    const next = migrate(JSON.parse(JSON.stringify(snap)));
+    next.settings.theme = theme;
+    state = next;
+    persist(); emit();
   }
 
   /* ---------------- habit log ---------------- */
@@ -420,8 +440,9 @@
       throw new Error('Not a Winter Arc backup file.');
     state = migrate(parsed);
     persist(); emit();
+    markChanged();
   }
-  function reset() { state = defaultState(); persist(); emit(); }
+  function reset() { state = defaultState(); persist(); emit(); markChanged(); }
 
   /* ---------------- boot ---------------- */
   state = load();
@@ -434,6 +455,8 @@
     area: id => AREAS.find(a => a.id === id) || AREAS[0],
     subscribe(fn) { listeners.push(fn); },
     commit, persist,
+    snapshot, applySynced,
+    onLocalChange(fn) { changeListeners.push(fn); },
 
     activeHabits, status, toggle, freeze, logOf,
     isMet, periodCount, periodKeys,
