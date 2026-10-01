@@ -1,6 +1,16 @@
 /* ============================================================
    merge.js — pure three-way merge for Winter Arc state.
    No DOM, no network. Works on plain JSON; returns fresh copies.
+
+   Known limits (accepted):
+   - Freeze tokens are merged as a delta counter, so two devices freezing the SAME day
+     (a same-day conflict) is counted as two spends.
+   - Records merge by id: a rename on one device vs a delete on the other keeps the record
+     (the edit wins), and habit names are not used to match records after first connect.
+   - A goal's status/progress is stored, not derived: milestone changes from two devices can
+     leave a goal's status out of step with its milestones until the next edit.
+   - freezeTokens re-merges are only correct if the caller advances its base to the remote
+     it just merged against.
    ============================================================ */
 (function (root) {
   'use strict';
@@ -58,34 +68,53 @@
 
   function three(base, local, remote, opts) {
     const o = opts || {};
-    const b = base || {};
+    const b = isObj(base) ? base : {};
+    if (!isObj(local) || !isObj(remote)) return isObj(local) ? clone(local) : isObj(remote) ? clone(remote) : {};
     if (equal(local, remote)) return clone(local);   // already converged: nothing to merge (and no double-counted deltas)
     const out = clone(mergeValue(b, local, remote, o.prefer === 'remote' ? 'remote' : 'local'));
     // freeze tokens are a counter: apply both sides' deltas
     if ([b.freezeTokens, local.freezeTokens, remote.freezeTokens].every(Number.isFinite)) {
       out.freezeTokens = Math.max(0, b.freezeTokens + (local.freezeTokens - b.freezeTokens) + (remote.freezeTokens - b.freezeTokens));
     }
+    // logs of a habit that no longer exists are junk (e.g. delete on one device vs tick on the other)
+    if (Array.isArray(out.habits) && isObj(out.logs)) {
+      const ids = new Set(out.habits.map(h => h && h.id));
+      Object.keys(out.logs).forEach(k => { if (!ids.has(k)) delete out.logs[k]; });
+    }
     return out;
   }
 
-  const norm = s => String(s == null ? '' : s).trim().toLowerCase();
+  const norm = s => String(s == null ? '' : s).trim().replace(/\s+/g, ' ').toLowerCase();
 
   /** No shared history (first sign-in on a device that already has data and the cloud has data):
       habits created independently on two devices have different random ids, so habits with the
       same name are treated as one (local logs are remapped); other conflicts → remote wins. */
   function firstConnect(local, remote) {
+    if (!isObj(local) || !isObj(remote)) return three({}, local, remote, { prefer: 'remote' });
     const l = clone(local);
-    const byName = new Map((remote.habits || []).map(h => [norm(h.name), h.id]));
+    const remoteHabits = Array.isArray(remote.habits) ? remote.habits : [];
+    const remoteIds = new Set(remoteHabits.map(h => h.id));
+    const localIds = new Set((l.habits || []).map(h => h.id));
+    const byName = new Map();
+    remoteHabits.forEach(h => { const n = norm(h.name); if (!byName.has(n)) byName.set(n, h.id); });
     const idMap = {};
+    const remapped = new Set();                      // local habits that were remapped onto a remote id
     (l.habits || []).forEach(h => {
+      if (remoteIds.has(h.id)) return;               // already the same record on both devices
       const rid = byName.get(norm(h.name));
-      if (rid && rid !== h.id) { idMap[h.id] = rid; h.id = rid; }
+      if (!rid || localIds.has(rid)) return;         // no match, or that id belongs to another local habit
+      idMap[h.id] = rid; h.id = rid; remapped.add(h);
     });
-    const seen = new Set();
-    l.habits = (l.habits || []).filter(h => (seen.has(h.id) ? false : (seen.add(h.id), true)));
-    if (l.logs) {
+    const seen = new Set();                          // only collapse habits remapped onto the same remote id
+    l.habits = (l.habits || []).filter(h => {
+      if (!remapped.has(h)) return true;
+      if (seen.has(h.id)) return false;
+      seen.add(h.id); return true;
+    });
+    if (isObj(l.logs)) {
       Object.keys(idMap).forEach(oldId => {
         const rid = idMap[oldId];
+        if (!isObj(l.logs[oldId])) return;
         l.logs[rid] = Object.assign({}, l.logs[oldId], l.logs[rid] || {});
         delete l.logs[oldId];
       });
