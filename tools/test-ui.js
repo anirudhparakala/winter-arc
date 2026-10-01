@@ -68,19 +68,29 @@ function stubEl() {
     contains: () => true, remove() {}, click() {}, focus() {} };
   return el;
 }
-function loadUI(sessionStorage) {
+function loadUI(sessionStorage, media) {
   const c = { console };
   c.window = c;
   const els = {};
-  c.document = {
+  const doc = c.document = {
     documentElement: {}, head: stubEl(), body: stubEl(), activeElement: null,
     getElementById: id => (els[id] = els[id] || stubEl()),
-    createElement: () => stubEl(),
+    // a <label> click focuses its <input> (what browsers do); focus()/blur() move activeElement
+    createElement: tag => {
+      const el = stubEl();
+      el.tagName = tag.toUpperCase();
+      el.focus = () => { doc.activeElement = el; };
+      el.blur = () => { if (doc.activeElement === el) doc.activeElement = null; };
+      if (tag === 'label') el.click = () => { if (el.children[0]) el.children[0].focus(); };
+      return el;
+    },
     querySelector: () => null, addEventListener() {}
   };
   c.sessionStorage = sessionStorage;
+  c.__els = els;
   c.Store = { COLORS: [] };
-  c.matchMedia = () => ({ matches: false });
+  // media: { reduce, coarse } — evaluated at call time, like the real matchMedia
+  c.matchMedia = q => ({ matches: !!media && ((/reduced-motion/.test(q) && !!media.reduce) || (/pointer: coarse/.test(q) && !!media.coarse)) });
   c.navigator = {};
   c.setTimeout = setTimeout; c.clearTimeout = clearTimeout;
   c.getComputedStyle = ctx.getComputedStyle;
@@ -107,6 +117,63 @@ const lab = UI.emoji('fire', { label: '<b>' });
 assert.ok(lab.includes('alt="&lt;b&gt;"') && !lab.includes('<b>'), 'label escaped');
 assert.ok(UI.streakChip(5).includes('is-hot') && UI.streakChip(5).endsWith('05</span>'));
 assert.ok(!UI.streakChip(2).includes('is-hot'));
+
+/* ---------- emoji(): animated APNGs only when motion is allowed ---------- */
+{
+  const rm = loadUI({ getItem: () => null, setItem() {} }, { reduce: true }).window.UI;
+  const f = rm.emoji('fire', { anim: true });
+  assert.ok(f.includes('assets/emoji/fire.png') && !f.includes('-anim.png'), 'reduced motion -> static image');
+  assert.ok(!/is-anim/.test(f), 'reduced motion -> no is-anim flicker class either');
+  assert.ok(!rm.emoji('party', { anim: true }).includes('-anim.png'));
+  assert.ok(!rm.streakChip(9).includes('-anim.png'), 'streak chip honours reduced motion');
+  // evaluated per call, not cached at load
+  const live = { reduce: false };
+  const lv = loadUI({ getItem: () => null, setItem() {} }, live).window.UI;
+  assert.ok(lv.emoji('snowflake', { anim: true }).includes('snowflake-anim.png'));
+  live.reduce = true;
+  assert.ok(!lv.emoji('snowflake', { anim: true }).includes('-anim.png'), 'reduce flipped at runtime is honoured');
+}
+
+/* ---------- haptic(): must not leave focus on its hidden input ---------- */
+{
+  const h = loadUI({ getItem: () => null, setItem() {} });
+  const btn = h.document.createElement('button');
+  btn.focus(); h.document.activeElement = btn;
+  h.window.UI.haptic();
+  assert.strictEqual(h.document.activeElement, btn, 'focus is restored to the previously focused element');
+  const hidden = h.document.body.children[0].children[0];
+  assert.strictEqual(hidden.attrs['aria-hidden'], 'true', 'hidden input is aria-hidden');
+  assert.strictEqual(hidden.tabIndex, -1);
+  // nothing was focused before: the hidden input must be blurred, not left active
+  h.document.activeElement = null;
+  h.window.UI.haptic();
+  assert.notStrictEqual(h.document.activeElement, hidden, 'hidden input never keeps focus');
+  // previously focused element has left the DOM: no stale focus either
+  const gone = h.document.createElement('button');
+  h.document.activeElement = gone;
+  h.document.body.contains = el => el !== gone;
+  h.window.UI.haptic();
+  assert.notStrictEqual(h.document.activeElement, hidden, 'detached previous element: hidden input is blurred');
+}
+
+/* ---------- modal(): no auto-focus of the first input on coarse pointers ---------- */
+{
+  function modalRun(media) {
+    const m = loadUI({ getItem: () => null, setItem() {} }, media);
+    const dlg = m.document.createElement('div');
+    m.__els.modalRoot.querySelector = s => (s === '.modal' ? dlg : null);
+    const input = m.document.createElement('input');
+    m.__els.modalBody.querySelector = () => input;
+    m.document.activeElement = null;
+    m.window.UI.modal('T', '<input>');
+    return { active: m.document.activeElement, dlg, input };
+  }
+  const touch = modalRun({ coarse: true });
+  assert.notStrictEqual(touch.active, touch.input, 'coarse pointer: keyboard must not pop over the sheet');
+  assert.strictEqual(touch.active, touch.dlg, 'coarse pointer: focus still moves into the dialog');
+  const mouse = modalRun({ coarse: false });
+  assert.strictEqual(mouse.active, mouse.input, 'fine pointer: first field is focused');
+}
 
 // storage that throws must not break celebrateOnce
 const bad = loadUI({ getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } });

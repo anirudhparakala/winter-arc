@@ -21,6 +21,10 @@
     target: '<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>'
   };
 
+  /* ---------------- media queries (read at call time, never cached) ---------------- */
+  const mq = q => !!(window.matchMedia && window.matchMedia(q).matches);
+  const reduceMotion = () => mq('(prefers-reduced-motion: reduce)');
+
   /* ---------------- modal ---------------- */
   const root  = document.getElementById('modalRoot');
   const title = document.getElementById('modalTitle');
@@ -36,8 +40,11 @@
     body.innerHTML = html;
     root.hidden = false;
     if (onMount) onMount(body);
-    const first = body.querySelector('input, textarea, select, button');
+    // a touch device would pop the keyboard over the bottom sheet: focus the dialog itself there
+    const first = mq('(pointer: coarse)') ? null : body.querySelector('input, textarea, select, button');
+    const dlg = root.querySelector('.modal');
     if (first) first.focus();
+    else if (dlg && dlg.focus) dlg.focus({ preventScroll: true });
   }
 
   function close() {
@@ -122,9 +129,10 @@
     const has = (m, k) => Object.prototype.hasOwnProperty.call(m, k);
     if (!has(EMO, slug)) return '';
     const staticSrc = EMO[slug];
-    const real = o.anim && ANIM.has(slug) && has(EMO_ANIM, slug) && EMO_ANIM[slug];
+    // an APNG can't be paused by CSS, so under reduced motion serve the still image
+    const real = o.anim && !reduceMotion() && ANIM.has(slug) && has(EMO_ANIM, slug) && EMO_ANIM[slug];
     const src = real || staticSrc;
-    const cls = 'emo' + (o.lit ? '' : ' is-off') + (o.anim && !real ? ' is-anim' : '');
+    const cls = 'emo' + (o.lit ? '' : ' is-off') + (o.anim && !real && !reduceMotion() ? ' is-anim' : '');
     const alt = o.label ? ` alt="${esc(o.label)}"` : ' alt="" aria-hidden="true"';
     return `<img class="${cls}" src="${src}" width="${o.size}" height="${o.size}"${alt}>`;
   }
@@ -218,7 +226,7 @@
   }
 
   /* ---------------- haptics ---------------- */
-  let hapticLabel = null;
+  let hapticLabel = null, hapticInput = null;
   /** iOS 18+ fires a tick when a `switch` checkbox is toggled by a label click */
   function haptic() {
     try {
@@ -226,21 +234,28 @@
         hapticLabel = document.createElement('label');
         hapticLabel.setAttribute('aria-hidden', 'true');
         hapticLabel.style.cssText = 'position:fixed;left:-99px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden';
-        const input = document.createElement('input');
+        const input = hapticInput = document.createElement('input');
         input.type = 'checkbox';
         input.setAttribute('switch', '');
+        input.setAttribute('aria-hidden', 'true');
         input.tabIndex = -1;
         hapticLabel.appendChild(input);
         document.body.appendChild(hapticLabel);
       }
+      // the label click focuses its hidden input — hand focus back so keyboard users keep their place
+      const prev = document.activeElement;
       hapticLabel.click();
+      if (document.activeElement === hapticInput) {
+        if (prev && prev !== hapticInput && prev !== document.body && prev.focus && document.body.contains(prev)) {
+          prev.focus({ preventScroll: true });
+        }
+        if (document.activeElement === hapticInput) hapticInput.blur();
+      }
     } catch (e) { /* unsupported — no-op */ }
     try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) { /* ignore */ }
   }
 
   /* ---------------- celebrate ---------------- */
-  const reduceMotion = () =>
-    !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let celebrateTimer = null;
   function celebrate(slug) {
     if (reduceMotion()) return;

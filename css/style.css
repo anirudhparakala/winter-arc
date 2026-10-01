@@ -168,7 +168,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 }
 
 @media print { .nav, .strip-r, .modal-root, .toast { display: none !important; } }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 /* ---------- generic ---------- */
 .card {
@@ -657,6 +657,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 }
 @keyframes pop { from { opacity: 0; transform: translateY(6px); } }
 @keyframes sheet { from { transform: translateY(100%); } }
+.modal:focus { outline: none; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .modal-head h2 { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g1); }
 .modal-actions { display: flex; gap: 9px; justify-content: flex-end; margin-top: 20px; }
