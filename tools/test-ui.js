@@ -147,16 +147,55 @@ setTimeout(() => {
   }, 420);
 }, 560);
 
-/* ---------- design tokens: every var(--x) used anywhere must be defined ---------- */
+/* ---------- litBlocks: any score above 0 lights a block ---------- */
+assert.strictEqual(Charts.litBlocks(0, 10), 0);
+assert.strictEqual(Charts.litBlocks(null, 10), 0, 'null = not started');
+assert.strictEqual(Charts.litBlocks(1, 10), 1, '1% still lights one block');
+assert.strictEqual(Charts.litBlocks(4, 10), 1);
+assert.strictEqual(Charts.litBlocks(14, 10), 1);
+assert.strictEqual(Charts.litBlocks(15, 10), 2);
+assert.strictEqual(Charts.litBlocks(100, 10), 10);
+assert.strictEqual(Charts.litBlocks(250, 10), 10, 'clamped');
+assert.strictEqual(Charts.litBlocks(-5, 10), 0);
+
+/* ---------- design tokens ---------- */
+const LEGACY = /--(?:surface-\d|border(?:-soft)?|text-(?:primary|secondary|muted)|accent-(?:ghost|dim)|flame|freeze|series-\d|good|warning|serious|critical|r-(?:sm|md|lg|xl)|sans|mono)(?![\w-])/g;
+/** sources: { name: text }. Used tokens must be defined somewhere, and no legacy name may appear. */
+function tokenProblems(sources) {
+  const src = Object.values(sources).join('\n');
+  const defined = new Set([
+    ...src.matchAll(/(--[\w-]+)\s*:/g),                              // css rules and inline style="--x:..."
+    ...src.matchAll(/setProperty\(\s*['"`](--[\w-]+)/g)              // el.style.setProperty('--x', ...)
+  ].map(m => m[1]));
+  const used = new Set([
+    ...src.matchAll(/var\(\s*(--[\w-]+)/g),
+    ...src.matchAll(/(?:css|getPropertyValue)\(\s*['"`](--[\w-]+)/g)  // css('--x'), getPropertyValue('--x')
+  ].map(m => m[1]));
+  return {
+    missing: [...used].filter(t => !defined.has(t)),
+    legacy: [...new Set(src.match(LEGACY) || [])]
+  };
+}
+{
+  // proof the check bites: seeded violations are flagged, clean sources are not
+  assert.deepStrictEqual(tokenProblems({ a: "const c = css('--surface-1');" }).legacy, ['--surface-1']);
+  assert.deepStrictEqual(tokenProblems({ a: 'x { color: var(--text-muted) }' }).legacy, ['--text-muted']);
+  assert.deepStrictEqual(tokenProblems({ a: "el.getPropertyValue('--nope')" }).missing, ['--nope']);
+  assert.deepStrictEqual(tokenProblems({ a: 'x { color: var(--nope2) }' }).missing, ['--nope2']);
+  const ok = tokenProblems({ a: ":root { --accent: red } x { c: var(--accent) } el.style.setProperty('--on', 1); css('--on'); style=\"--k:1\" var(--k)" });
+  assert.deepStrictEqual(ok, { missing: [], legacy: [] });
+  assert.deepStrictEqual(tokenProblems({ a: 'var(--border-soft) var(--r-md) var(--sans)' }).legacy.sort(), ['--border-soft', '--r-md', '--sans']);
+  assert.deepStrictEqual(tokenProblems({ a: 'var(--rule) var(--g1) var(--f-mono) var(--border-x)' }).legacy, [], 'new tokens are not legacy');
+}
 (function () {
   const root = path.join(__dirname, '..');
-  const files = ['index.html', 'css/style.css', 'js/app.js', 'js/charts.js', 'js/ui.js',
-    ...fs.readdirSync(path.join(root, 'js', 'views')).map(f => 'js/views/' + f)];
-  const src = files.map(f => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
-  const defined = new Set([...src.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
-  const used = new Set([...src.matchAll(/var\((--[\w-]+)/g)].map(m => m[1]));
-  const missing = [...used].filter(t => !defined.has(t));
-  assert.deepStrictEqual(missing, [], 'undefined CSS tokens: ' + missing.join(', '));
-  assert.ok(!/Charts\.ring|hero-ring/.test(src), 'progress ring was retired');
+  const rd = d => fs.readdirSync(path.join(root, d)).filter(f => /\.(js|css)$/.test(f)).map(f => d + '/' + f);
+  const files = ['index.html', 'sw.js', ...rd('css'), ...rd('js'), ...rd('js/views')];
+  const sources = {};
+  files.forEach(f => { sources[f] = fs.readFileSync(path.join(root, f), 'utf8'); });
+  const p = tokenProblems(sources);
+  assert.deepStrictEqual(p.missing, [], 'undefined CSS tokens: ' + p.missing.join(', '));
+  assert.deepStrictEqual(p.legacy, [], 'legacy tokens still present: ' + p.legacy.join(', '));
+  assert.ok(!/Charts\.ring|hero-ring/.test(Object.values(sources).join('\n')), 'progress ring was retired');
   console.log('tokens ok');
 })();

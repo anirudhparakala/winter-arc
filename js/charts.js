@@ -25,6 +25,12 @@
     return `<div class="segbar" aria-hidden="true">${out}</div>`;
   }
 
+  /** how many of `n` blocks to light for a 0-100 score: any score above 0 lights at least one */
+  function litBlocks(pct, n) {
+    const p = clamp(Number(pct) || 0, 0, 100);
+    return p > 0 ? Math.max(1, Math.round(p / 100 * n)) : 0;
+  }
+
   /* ---------- sparkline (single series, no axis) ---------- */
   function spark(values, opt) {
     const o = Object.assign({ w: 600, h: 44, color: null }, opt);
@@ -202,5 +208,5 @@
       </span>`).join('')}</div>`;
   }
 
-  window.Charts = { segments, spark, lines, legend, mount, esc };
+  window.Charts = { segments, litBlocks, spark, lines, legend, mount, esc };
 })();

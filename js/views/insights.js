@@ -117,7 +117,7 @@
 
       // 10 blocks per month, lit bottom-up by rounded tenths, same build as Tasks' week columns
       const monthCols = months.map(mo => {
-        const lit = mo.score == null ? 0 : mo.score > 0 ? Math.max(1, Math.round(mo.score / 10)) : 0;   // any activity lights a block
+        const lit = Charts.litBlocks(mo.score, 10);   // null = not started; any score above 0 lights a block
         let blocks = '';
         for (let b = 0; b < 10; b++) blocks += b < lit ? '<i class="on"></i>' : '<i></i>';
         const text = `${mo.label} ${mo.year}: ${mo.score == null ? 'not started' : mo.score + '%'}`;
