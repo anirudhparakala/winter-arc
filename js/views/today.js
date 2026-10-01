@@ -5,36 +5,37 @@
   'use strict';
   window.Views = window.Views || {};
 
+  const pad2 = n => String(n).padStart(2, '0');
+  const pad3 = n => String(n).padStart(3, '0');
+
   function periodLabel(h, key) {
     const done = Store.periodCount(h, key);
     const word = h.cadence === 'weekly' ? 'this week' : 'this month';
     return `${done}/${h.target} ${word}`;
   }
 
-  function habitRow(h, key) {
+  function habitRow(h, i, key) {
     const st   = Store.status(h.id, key);
     const met  = Store.isMet(h, key);
     const done = st === true;
     const frozen = st === 'freeze';
-    const cls = ['habit-row'];
+    const cls = ['hrow', 'press'];
     if (met || frozen) cls.push('is-done');
+    if (frozen) cls.push('is-freeze');
 
-    const right = h.cadence === 'daily'
-      ? UI.streakChip(Store.streak(h))
-      : `<span class="pill">${esc(periodLabel(h, key))}</span>${UI.streakChip(Store.streak(h))}`;
+    const tag = h.cadence === 'daily' ? ''
+      : `<span class="htag">${esc(periodLabel(h, key))}</span>`;
 
     return `
-      <div class="${cls.join(' ')}" data-habit="${h.id}">
+      <div class="${cls.join(' ')}" data-habit="${esc(h.id)}">
         <button class="check${done ? ' is-done' : ''}${frozen ? ' is-freeze' : ''}"
                 data-act="toggle" aria-pressed="${done}"
-                aria-label="${esc(h.name)}">${frozen ? UI.ICON.snow : UI.ICON.check}</button>
-        <span class="cdot" style="background:${h.color}"></span>
-        <span class="habit-name grow truncate">${esc(h.name)}</span>
-        <span class="habit-meta">
-          ${(!done && !frozen) ? `<button class="freeze-btn" data-act="freeze"
-              title="Use a freeze token to protect this streak">${UI.ICON.snow}</button>` : ''}
-          ${right}
-        </span>
+                aria-label="${esc(h.name)}${frozen ? ' (frozen)' : ''}">${UI.ICON.check}</button>
+        <span class="hix">${pad2(i + 1)}</span>
+        <span class="hmark" style="background:${esc(h.color)}"></span>
+        <span class="hlabel grow"><span class="hn truncate">${esc(h.name)}</span>${tag}</span>
+        ${frozen ? UI.emoji('snowflake', { size: 18, label: 'Frozen' }) : ''}
+        ${UI.streakChip(Store.streak(h))}
       </div>`;
   }
 
@@ -48,54 +49,78 @@
       const pct = Store.dayScore(key);
       const tokens = Store.state.freezeTokens;
       const a = Store.arc();
-
-      const left = hs.filter((_, i) => i % 2 === 0);
-      const right = hs.filter((_, i) => i % 2 === 1);
+      const best = hs.reduce((m, h) => Math.max(m, Store.bestStreak(h)), 0);
 
       el.innerHTML = `
-        <div class="today-hero">
-          ${Charts.ring(pct, { size: 164, stroke: 14, sub: 'TODAY' })}
-          <div class="today-date">${esc(D.longDate(d))}</div>
-          <div class="today-sub">${tally.done} / ${tally.total} habits completed</div>
-          <div class="row" style="margin-top:12px;gap:8px">
-            <button class="pill pill-accent" id="tokBtn">
-              ${UI.ICON.snow} ${tokens} freeze token${tokens === 1 ? '' : 's'} available
-            </button>
-            <span class="pill">Day ${a.elapsed} of ${a.total}</span>
+        <section class="hero">
+          <div class="pct dotnum">${pct}<sup>%</sup></div>
+          <div>
+            <div class="lb">${esc(D.longDate(d))} — day ${pad3(a.elapsed)} of ${a.total}</div>
+            ${Charts.segments(tally.done, tally.total)}
+            <div class="spec">
+              <div><span class="lb">Done</span><b>${tally.done}/${tally.total}</b></div>
+              <div><span class="lb">Best run</span><b>${best}D</b></div>
+              <button class="spec-btn" id="tokBtn"
+                      aria-label="Freeze tokens: ${tokens}. Edit">
+                <span class="lb">Freezes</span><b>${pad2(tokens)}</b></button>
+              <div><span class="lb">Remaining</span><b>${a.left}</b></div>
+            </div>
           </div>
+        </section>
+
+        <div class="tgrid">
+          <div class="mod">
+            <div class="mh"><span class="lb">01 / Habits</span>
+              <span class="lb hint">Tap to log · hold to freeze</span></div>
+            ${hs.length
+              ? `<div id="habitList">${hs.map((h, i) => habitRow(h, i, key)).join('')}</div>`
+              : `<div class="empty">No habits yet — add one on Habits (2)</div>`}
+          </div>
+          <div class="mod" id="todayTasks"></div>
         </div>
-
-        ${hs.length ? `
-        <div class="today-grid" id="habitList">
-          <div>${left.map(h => habitRow(h, key)).join('')}</div>
-          <div>${right.map(h => habitRow(h, key)).join('')}</div>
-        </div>` : `
-        <div class="card empty" style="margin-top:20px">
-          No habits yet. Head to <b>Habits</b> and add your first one.
-        </div>`}
-
-        <div class="section-label">Today's tasks</div>
-        <div class="card" id="todayTasks"></div>
       `;
 
-      /* habit interactions */
+      /* habit interactions: tap a row (or its check) to log, hold / right-click to freeze */
       const list = el.querySelector('#habitList');
-      if (list) list.addEventListener('click', e => {
-        const btn = e.target.closest('[data-act]');
-        if (!btn) return;
-        const id = btn.closest('[data-habit]').dataset.habit;
-        if (btn.dataset.act === 'toggle') Store.toggle(id, key);
-        else {
-          if (!Store.freeze(id, key)) UI.toast('No freeze tokens left.');
-          else UI.toast('Streak protected for today.');
-        }
-      });
+      if (list) {
+        list.addEventListener('click', e => {
+          const row = e.target.closest('[data-habit]');
+          if (!row) return;
+          const id = row.dataset.habit;
+          const before = Store.dayScore(key);
+          UI.haptic();
+          Store.toggle(id, key);
+          // celebrate only the user-driven transition to a full day, never a plain render
+          if (before < 100 && Store.dayScore(key) === 100 && Store.dayTally(key).total > 0) {
+            UI.celebrateOnce('day100:' + key, 'party');
+          }
+        });
+        const freezeRow = row => {
+          const id = row.dataset.habit;
+          const was = Store.status(id, key);
+          if (was === true) { UI.toast('Already done today.'); return; }
+          if (!Store.freeze(id, key)) { UI.toast('No freeze tokens left.'); return; }
+          if (was === 'freeze') { UI.toast('Freeze removed.'); return; }
+          UI.toast('Streak protected for today.');
+          UI.celebrateOnce('freeze:' + id + ':' + key, 'snowflake');
+        };
+        // bound to the persistent view, not the per-render list: a freeze re-renders mid-gesture,
+        // and the click that follows the hold must still hit the suppressor
+        UI.onHold(el, '.hrow[data-habit]', freezeRow);
+        // keyboard parity for the hold gesture: F on a focused check
+        list.addEventListener('keydown', e => {
+          if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            const row = e.target.closest && e.target.closest('[data-habit]');
+            if (row) { e.preventDefault(); freezeRow(row); }
+          }
+        });
+      }
 
       el.querySelector('#tokBtn').onclick = () => UI.modal('Freeze tokens', `
         <p class="muted" style="margin:0 0 14px;line-height:1.6">
           A freeze token holds a streak for a day you genuinely couldn't show up —
           the streak survives, but the day isn't counted as completed in your rates.
-          Tap the snowflake on any habit to spend one.
+          Press and hold a habit (or right-click it, or press F on it) to spend one.
         </p>
         <label class="field"><span>Tokens available</span>
           <input class="input" type="number" min="0" max="99" id="tokVal"
@@ -118,22 +143,19 @@
 
   function renderTasks(box, key) {
     const list = Store.tasksOf(key);
-    const pct = Store.taskScore(key);
     box.innerHTML = `
-      <div class="between" style="margin-bottom:12px">
-        <span class="card-label">${list.filter(t => t.done).length} / ${list.length} done</span>
-        <span class="pill">${pct}%</span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">
+      <div class="mh"><span class="lb">02 / Today's tasks</span>
+        <span class="lb tcount">${list.filter(t => t.done).length}/${list.length}</span></div>
+      <div id="taskList">
         ${list.map(t => `
-          <div class="task-item${t.done ? ' is-done' : ''}" data-task="${t.id}">
+          <div class="trow${t.done ? ' is-done' : ''}" data-task="${esc(t.id)}">
             <button class="check${t.done ? ' is-done' : ''}" data-act="t"
-                    aria-pressed="${t.done}">${UI.ICON.check}</button>
-            <span class="task-text">${esc(t.text)}</span>
-            <button class="task-del" data-act="d" aria-label="Delete task">${UI.ICON.x}</button>
+                    aria-pressed="${t.done}" aria-label="${esc(t.text)}">${UI.ICON.check}</button>
+            <span class="ttext">${esc(t.text)}</span>
+            <button class="tdel" data-act="d" aria-label="Delete task">${UI.ICON.x}</button>
           </div>`).join('')}
       </div>
-      <input class="add-task" style="margin-top:8px" placeholder="+ Add task" id="addT">`;
+      <input class="tadd" placeholder="+ Add task" id="addT" aria-label="Add task">`;
 
     box.addEventListener('click', e => {
       const b = e.target.closest('[data-act]');
