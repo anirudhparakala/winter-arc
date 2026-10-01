@@ -282,5 +282,5 @@ test('fresh install seeds the 7 default habits', () => {
   assert.strictEqual(gym.cadence, 'weekly'); assert.strictEqual(gym.target, 5);
 });
 
-console.log(`\n${pass} passed,${fail} failed\n`);
+console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -24,7 +24,7 @@ scripts.forEach(src => {
   html = html.replace(
     `<script src="${src}"></script>`,
     // the source can contain </script> inside a string literal — neutralise it
-    () => '<script>\n' + code.replace(/<\/script>/gi, '<\/script>') + '\n</script>'
+    () => '<script>\n' + code.replace(/<\/script>/gi, '<\\/script>') + '\n</script>'
   );
 });
 
