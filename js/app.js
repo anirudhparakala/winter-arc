@@ -98,7 +98,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  document.getElementById('settingsBtn').onclick = () => {
+  function openSettings() {
     const s = Store.state.settings;
     const a = Store.arc();
     UI.modal('Settings', `
@@ -126,8 +126,12 @@
         Current arc: <b>${esc(a.start)}</b> → <b>${esc(a.end)}</b> · ${a.total} days ·
         ${a.left} left.${Store.memoryOnly
           ? '<br><b style="color:var(--warn)">This browser is blocking local storage — export a backup before you close the tab.</b>'
-          : '<br>Everything is saved in this browser only. Export a backup to move it to another device.'}
+          : sync.isSignedIn()
+            ? '<br>Saved on this device and synced to your cloud copy.'
+            : '<br>Everything is saved in this browser only. Export a backup to move it to another device.'}
       </p>
+
+      ${syncSectionHTML()}
 
       <div class="card-label" style="margin-bottom:8px">Your data</div>
       <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -173,14 +177,40 @@
         r.readAsText(f);
       };
       m.querySelector('#sReset').onclick = () => {
-        UI.confirm('Erase every habit, task, goal and logged day on this device?', () => {
+        const signedIn = sync.isSignedIn();
+        UI.confirm(signedIn
+          ? 'Erase every habit, task, goal and logged day on this device AND in your cloud copy? Your other devices will be erased on their next sync.'
+          : 'Erase every habit, task, goal and logged day on this device?', () => {
           Store.reset(); applyTheme(); UI.close(); UI.toast('Reset complete.');
+          if (signedIn) sync.overwriteCloud();
         }, 'Erase everything');
       };
+
+      // cloud sync controls
+      const line = m.querySelector('#syLine');
+      const inBtn = m.querySelector('#syIn');
+      if (inBtn) {
+        const email = m.querySelector('#syEmail'), pass = m.querySelector('#syPass');
+        const submit = () => {
+          const e = email.value.trim(), p = pass.value;
+          if (!e || !p) { line.textContent = 'Enter your email and password.'; return; }
+          inBtn.disabled = true; line.textContent = 'Signing in…';
+          sync.signIn(e, p)
+            .then(() => { UI.close(); openSettings(); })   // the first-connect dialog may have replaced this one: that is fine
+            .catch(err => { line.textContent = (err && err.message) || 'Sign-in failed'; inBtn.disabled = false; });
+        };
+        inBtn.onclick = submit;
+        [email, pass].forEach(i => i.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }));
+      }
+      const nowBtn = m.querySelector('#syNow');
+      if (nowBtn) nowBtn.onclick = () => { if (!askOpen) sync.syncNow({ interactive: true }); };
+      const outBtn = m.querySelector('#syOut');
+      if (outBtn) outBtn.onclick = () => { outBtn.disabled = true; sync.signOut().then(() => { UI.close(); openSettings(); }); };
     },
     // the theme select previews live — put it back if the dialog is dismissed
     () => applyTheme());
-  };
+  }
+  document.getElementById('settingsBtn').onclick = openSettings;
 
   function applyTheme() {
     document.documentElement.dataset.theme = Store.state.settings.theme || 'dark';
@@ -203,6 +233,96 @@
   if (Store.memoryOnly) {
     UI.toast('Local storage is blocked here — use Export backup to keep your data.');
   }
+
+  /* ---------------- cloud sync ---------------- */
+  let askOpen = false, askPending = null;
+
+  /** the first-connect dialog: one at a time; backdrop / Esc / close resolves null (dismissed) */
+  function askFirstConnect() {
+    if (askOpen) {
+      const showing = !document.getElementById('modalRoot').hidden &&
+        document.getElementById('modalTitle').textContent === 'Connect this device';
+      if (showing) return askPending;
+      askOpen = false;                          // the dialog was replaced without closing: do not stay stuck
+    }
+    askOpen = true;
+    askPending = new Promise(resolve => {
+      let done = false;
+      const fin = v => { if (!done) { done = true; askOpen = false; askPending = null; resolve(v); } };
+      UI.modal('Connect this device', `
+        <p class="muted" style="margin:0 0 14px;line-height:1.6">Both this device and your cloud copy already have data. How should they be combined?</p>
+        <div class="connect-choices">
+          <button class="btn btn-primary" data-c="merge">Merge both (recommended)</button>
+          <button class="btn" data-c="cloud">Use the cloud copy (replace this device)</button>
+          <button class="btn btn-danger" data-c="device">Use this device (overwrite the cloud)</button>
+        </div>`, m => {
+        m.querySelectorAll('[data-c]').forEach(b => { b.onclick = () => { fin(b.dataset.c); UI.close(); }; });
+      }, () => fin(null));
+    });
+    return askPending;
+  }
+
+  const sync = SyncEngine.create({
+    fetch: (...a) => window.fetch(...a), storage: localStorage, store: Store, merge: Merge,
+    config: window.SYNC_CONFIG || {}, askFirstConnect
+  });
+  window.Sync = sync;
+  Store.onLocalChange(sync.notifyLocalChange);
+
+  const dot = document.getElementById('syncDot');
+  const DOT_LABEL = { idle: 'Synced', syncing: 'Syncing', pending: 'Waiting to sync', attention: 'Sync needs attention' };
+  function paintDot(s) {
+    const show = sync.isConfigured() && sync.isSignedIn() && s.state !== 'signedOut' && s.state !== 'unconfigured';
+    dot.hidden = !show;
+    dot.className = 'sync-dot is-' + (s.state === 'syncing' ? 'idle' : s.state);
+    const btn = document.getElementById('settingsBtn');
+    const label = show ? 'Settings — ' + (DOT_LABEL[s.state] || '') : 'Settings';
+    btn.setAttribute('aria-label', label); btn.title = label;
+  }
+  function timeAgo(t) { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago'; }
+  function statusText(s) {
+    if (s.state === 'syncing') return 'Syncing…';
+    if (s.state === 'idle') return s.lastSyncedAt ? 'Synced ' + timeAgo(s.lastSyncedAt) : s.message;
+    return s.message;
+  }
+  /** signed out: only a message that asks something of the user is worth showing */
+  function signedOutText(s) {
+    return s.state === 'attention' || s.state === 'pending' || s.message === 'Sign in again' ? s.message : '';
+  }
+  function syncSectionHTML() {
+    const s = sync.status();
+    if (!sync.isConfigured()) return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
+      <p class="muted" style="font-size:12px;margin:0 0 16px;line-height:1.55">Not set up. Add your Supabase project in <b>js/sync-config.js</b> (see README → Cloud sync) to use this app on several devices.</p>`;
+    if (!sync.isSignedIn()) return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
+      <label class="field"><span>Email</span><input class="input" id="syEmail" type="email" autocomplete="username" value="${esc(s.email || '')}"></label>
+      <label class="field"><span>Password</span><input class="input" id="syPass" type="password" autocomplete="current-password"></label>
+      <div class="row" style="gap:8px;margin-bottom:6px"><button class="btn btn-sm btn-primary" id="syIn">Sign in</button></div>
+      <p class="muted" id="syLine" role="status" style="font-size:12px;margin:0 0 16px;line-height:1.55">${esc(signedOutText(s))}</p>`;
+    return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
+      <p class="muted" style="font-size:12px;margin:0 0 8px;overflow-wrap:anywhere">Signed in as <b>${esc(s.email || '')}</b></p>
+      <p class="muted" id="syLine" role="status" style="font-size:12px;margin:0 0 10px;line-height:1.55">${esc(statusText(s))}</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:16px"><button class="btn btn-sm" id="syNow">Sync now</button><button class="btn btn-sm" id="syOut">Sign out</button></div>`;
+  }
+
+  sync.onStatus(s => {
+    paintDot(s);
+    const el = document.getElementById('syLine');       // only while Settings is open
+    if (el) el.textContent = sync.isSignedIn() ? statusText(s) : signedOutText(s);
+  });
+  paintDot(sync.status());
+
+  // background triggers never open the first-connect dialog (plain syncNow, no options)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) sync.syncNow(); });
+  window.addEventListener('online', () => sync.syncNow());
+  setInterval(() => { if (!document.hidden) sync.syncNow(); }, 60000);
+
+  // another tab saved: adopt its copy so this tab can't overwrite it with a stale one
+  // (storage events only fire in OTHER tabs; reloading never marks a local change)
+  window.addEventListener('storage', e => {
+    if (e.key === 'winterArc.v1' && e.newValue != null && Store.reloadFromStorage()) applyTheme();
+  });
+
+  sync.syncNow();
 
   // installable app — only meaningful over http(s); harmless to skip on file://
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

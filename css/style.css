@@ -133,6 +133,16 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 .icon-btn:active { transform: translateY(1px); }
 .icon-btn.sm { width: 28px; height: 28px; }
 
+/* cloud-sync status on the settings button: lit = synced, hollow = waiting, amber = needs you */
+#settingsBtn { position: relative; }
+.sync-dot { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; }
+.sync-dot.is-idle { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+.sync-dot.is-pending { background: transparent; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.sync-dot.is-attention { background: var(--warn); }
+/* first-connect choices: long labels wrap instead of overflowing a 320px sheet */
+.connect-choices { display: flex; flex-direction: column; gap: 8px; }
+.connect-choices .btn { white-space: normal; text-align: left; justify-content: flex-start; line-height: 1.4; }
+
 .view { padding: 24px 0 0; }
 .view.enter { animation: enter .18s var(--snap); }
 @keyframes enter { from { opacity: 0; transform: translateY(4px); } }
