@@ -1,7 +1,8 @@
 /* ============================================================
    charts.js — SVG chart renderers
-   Mark spec: 2px lines, >=8px hover markers, recessive grid,
-   crosshair + tooltip on every line/area chart, selective labels.
+   Mark spec: 1.5px lines, flat area fill, square >=8px hover markers,
+   dashed recessive grid, crosshair + tooltip on every line/area chart,
+   selective labels.
    ============================================================ */
 (function () {
   'use strict';
@@ -114,8 +115,8 @@
                   x2="${padL + iw}" y2="${gy.toFixed(1)}"/>`;
       }
 
-      // ~6 evenly spaced x labels, never every point
-      const step = Math.max(1, Math.ceil(n / 6));
+      // ~6 evenly spaced x labels (4 on a phone), never every point
+      const step = Math.max(1, Math.ceil(n / (W < 500 ? 4 : 6)));
       let xlab = '';
       for (let i = 0; i < n; i += step) {
         const anchor = i === 0 ? 'start' : (i > n - step ? 'end' : 'middle');
@@ -135,33 +136,29 @@
         return out;
       };
 
-      const paths = series.map((s, si) => {
+      const paths = series.map(s => {
         const segs = runs(s.values);
         if (!segs.length) return '';
         const d = segs.map(seg =>
           'M' + seg.map(i => `${X(i).toFixed(1)},${Y(s.values[i]).toFixed(1)}`).join('L')).join(' ');
-        const line = `<path d="${d}" fill="none" stroke="${s.color}"
-                        stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+        const col = esc(s.color);
+        const line = `<path d="${d}" fill="none" stroke="${col}"
+                        stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`;
         // a run of one point would be invisible as a stroke — mark it
         const lone = segs.filter(g => g.length === 1).map(g =>
-          `<circle cx="${X(g[0]).toFixed(1)}" cy="${Y(s.values[g[0]]).toFixed(1)}"
-                   r="2.5" fill="${s.color}"/>`).join('');
+          `<rect x="${(X(g[0]) - 2.5).toFixed(1)}" y="${(Y(s.values[g[0]]) - 2.5).toFixed(1)}"
+                   width="5" height="5" fill="${col}"/>`).join('');
         if (!c.area) return line + lone;
-        const fillId = `g${si}_${Math.random().toString(36).slice(2, 7)}`;
         const base = padT + ih;
         const fills = segs.filter(g => g.length > 1).map(g =>
           `<path d="M${g.map(i => `${X(i).toFixed(1)},${Y(s.values[i]).toFixed(1)}`).join('L')}` +
           `L${X(g[g.length-1]).toFixed(1)},${base}L${X(g[0]).toFixed(1)},${base}Z"
-                 fill="url(#${fillId})" stroke="none"/>`).join('');
-        return `<defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="${s.color}" stop-opacity=".34"/>
-                  <stop offset="100%" stop-color="${s.color}" stop-opacity="0"/>
-                </linearGradient></defs>${fills}${line}${lone}`;
+                 fill="${col}" fill-opacity=".1" stroke="none"/>`).join('');
+        return fills + line + lone;
       }).join('');
 
       const markers = series.map(s =>
-        `<circle class="hov-dot" r="4.5" fill="${s.color}" stroke="var(--surface-1)"
-                 stroke-width="2" opacity="0"/>`).join('');
+        `<rect class="hov-dot" width="8" height="8" fill="${esc(s.color)}" opacity="0"/>`).join('');
 
       el.innerHTML = `
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
@@ -188,11 +185,11 @@
         dots.forEach((d, si) => {
           const v = series[si].values[i];
           if (v == null) { d.setAttribute('opacity', '0'); return; }
-          d.setAttribute('cx', cx); d.setAttribute('cy', Y(v)); d.setAttribute('opacity', '1');
+          d.setAttribute('x', cx - 4); d.setAttribute('y', Y(v) - 4); d.setAttribute('opacity', '1');
         });
         const rows = series.map(s => `
           <div class="tip-row">
-            <span class="legend-swatch" style="background:${s.color}"></span>
+            <span class="legend-swatch" style="background:${esc(s.color)}"></span>
             <span>${esc(s.name)}</span>
             <b>${s.values[i] == null ? '—' : esc(c.fmt(s.values[i]))}</b>
           </div>`).join('');
@@ -205,21 +202,29 @@
         tip.style.top  = ((anchor == null ? padT + ih / 2 : Y(anchor)) - 12) + 'px';
       }
       function hide() {
+        clearTimeout(touchT);
         tip.classList.remove('is-on');
         vline.setAttribute('opacity', '0');
         dots.forEach(d => d.setAttribute('opacity', '0'));
       }
       const hit = el.querySelector('.hit');
-      hit.addEventListener('pointermove', show);
-      hit.addEventListener('pointerdown', show);
-      hit.addEventListener('pointerleave', hide);
+      let touchT;
+      const onShow = ev => { clearTimeout(touchT); show(ev); };
+      hit.addEventListener('pointermove', onShow);
+      hit.addEventListener('pointerdown', onShow);
+      // a finger lifting also "leaves" the chart: keep the readout up for a moment instead
+      hit.addEventListener('pointerup', ev => {
+        if (ev.pointerType === 'touch') touchT = setTimeout(hide, 2500);
+      });
+      hit.addEventListener('pointerleave', ev => { if (ev.pointerType !== 'touch') hide(); });
+      hit.addEventListener('pointercancel', hide);
     });
   }
 
   function legend(series) {
     return `<div class="legend">${series.map(s => `
       <span class="legend-item">
-        <span class="legend-swatch" style="background:${s.color}"></span>${esc(s.name)}
+        <span class="legend-swatch" style="background:${esc(s.color)}"></span>${esc(s.name)}
       </span>`).join('')}</div>`;
   }
 

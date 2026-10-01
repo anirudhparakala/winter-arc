@@ -30,6 +30,21 @@ assert.ok((Charts.segments(0, NaN).match(/<i/g) || []).length >= 1, 'NaN total -
 assert.ok((Charts.segments(NaN, 5).match(/<i/g) || []).length === 5, 'NaN done is safe');
 assert.strictEqual((Charts.segments(40, 40).match(/class="on"/g) || []).length, 31, '40/40 lights exactly 31');
 
+/* ---------- lines(): area fill is flat, never a gradient ---------- */
+function lineHtml(cfg) {
+  const node = { clientWidth: 600, innerHTML: '', addEventListener() {}, setAttribute() {},
+    classList: { add() {}, remove() {} }, style: {}, offsetWidth: 0 };
+  const el = Object.assign({}, node, { querySelector: () => node, querySelectorAll: () => [] });
+  Charts.lines(el, Object.assign({ labels: ['a', 'b', 'c'], height: 200 }, cfg));
+  return el.innerHTML;
+}
+const areaHtml = lineHtml({ area: true, yMax: 100, series: [{ name: 's', color: 'var(--accent)', values: [10, 50, 90] }] });
+assert.ok(areaHtml.includes('<svg'), 'area chart renders');
+assert.ok(!/gradient/i.test(areaHtml) && !areaHtml.includes('url(#'), 'area fill is flat (no gradient)');
+assert.ok(/fill-opacity="\.1"/.test(areaHtml), 'area fill is 10% opacity');
+assert.ok(!/stroke-width="2"/.test(areaHtml), 'line is 1.5px, not 2px');
+assert.ok(!areaHtml.includes('--surface-1'), 'no legacy token in the hover dot');
+
 /* ---------- ui.js in a stub DOM ---------- */
 function stubEl() {
   const el = { hidden: false, textContent: '', innerHTML: '', style: {}, children: [], attrs: {},

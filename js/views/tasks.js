@@ -6,11 +6,11 @@
   window.Views = window.Views || {};
 
   const SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  // categorical chart marks (not accent usage): fixed hues so a series keeps its colour
+  // categorical chart marks (not accent usage): one hue per series, darker in the light theme (--m-* tokens)
   const MIND = [
-    { key: 'energy',     label: 'Energy',     short: 'E', color: '#ff9a5c' },
-    { key: 'focus',      label: 'Focus',      short: 'F', color: '#8ecbff' },
-    { key: 'motivation', label: 'Motivation', short: 'M', color: '#7fe0b0' }
+    { key: 'energy',     label: 'Energy',     short: 'E', color: 'var(--m-energy)' },
+    { key: 'focus',      label: 'Focus',      short: 'F', color: 'var(--m-focus)' },
+    { key: 'motivation', label: 'Motivation', short: 'M', color: 'var(--m-motivation)' }
   ];
 
   let weekCursor = null;   // Date — start of the displayed week
@@ -150,7 +150,7 @@
           ${keys.map(k => dayCard(k)).join('')}
         </div>`;
 
-      /* mindset chart — legend + tooltip; look is set in CSS (.mindmod) */
+      /* mindset chart — legend + tooltip; the chart look is the shared one in style.css */
       Charts.lines(el.querySelector('#mindChart'), {
         height: 208, yMax: 10,
         labels: keys.map(k => SHORT[D.parse(k).getDay()]),

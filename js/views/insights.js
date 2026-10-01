@@ -54,7 +54,7 @@
       out.push({
         label: D.MONTHS[c.getMonth()].slice(0, 3),
         year: c.getFullYear(),
-        future: c > today && c.getMonth() !== today.getMonth(),
+        cur: c.getFullYear() === today.getFullYear() && c.getMonth() === today.getMonth(),
         score: first <= last ? Store.rangeScore(first, last) : null
       });
       c = new Date(c.getFullYear(), c.getMonth() + 1, 1);
@@ -65,6 +65,9 @@
   Views.insights = {
     title: 'INSIGHTS',
     render(el) {
+      // a deleted habit can't stay selected
+      const scopeHabit = Store.state.habits.find(h => h.id === scope);
+      if (!scopeHabit) scope = 'overall';
       const habits = Store.activeHabits();
       const keys = rangeKeys();
       const raw = keys.map(scoreOn);
@@ -92,102 +95,107 @@
         .sort((a, b) => b.s - a.s).slice(0, 6);
 
       const months = monthsOfArc();
-      const maxM = Math.max(1, ...months.map(m => m.score || 0));
 
       const habitOpts = habits.map(h =>
-        `<option value="${h.id}"${scope === h.id ? ' selected' : ''}>${esc(h.name)}</option>`).join('');
+        `<option value="${esc(h.id)}"${scope === h.id ? ' selected' : ''}>${esc(h.name)}</option>`).join('');
+
+      const pad2 = n => String(n).padStart(2, '0');
+
+      /* one leaderboard row: rank, name over a 20-block bar (lit blocks take the habit's colour), value */
+      const lrow = (i, h, lit, value, title) => `
+        <div class="lrow" title="${esc(title)}" style="--on:${esc(h.color)}">
+          <span class="lrank">${pad2(i + 1)}</span>
+          <div class="lmid">
+            <span class="lname truncate">${esc(h.name)}</span>
+            ${Charts.segments(lit, 20, { max: 20 })}
+          </div>
+          <b class="lval">${value}</b>
+        </div>`;
+
+      const deltaCls = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : '';
+      const deltaTxt = (delta > 0 ? '+' : delta < 0 ? '−' : '') + Math.abs(delta) + '%';
+
+      // 10 blocks per month, lit bottom-up by rounded tenths, same build as Tasks' week columns
+      const monthCols = months.map(mo => {
+        const lit = mo.score == null ? 0 : Math.round(mo.score / 10);
+        let blocks = '';
+        for (let b = 0; b < 10; b++) blocks += b < lit ? '<i class="on"></i>' : '<i></i>';
+        const text = `${mo.label} ${mo.year}: ${mo.score == null ? 'not started' : mo.score + '%'}`;
+        return `<div class="wcol${mo.cur ? ' is-today' : ''}" title="${esc(text)}"
+                     role="img" aria-label="${esc(text)}">
+          <div class="wstack">${blocks}</div>
+          <span>${esc(mo.label)}</span>
+          <span>${mo.score == null ? '–' : mo.score + '%'}</span>
+        </div>`;
+      }).join('');
 
       el.innerHTML = `
-        <div class="card" style="margin-top:8px">
-          <div class="between">
-            <div>
-              <div class="card-label">Overall consistency</div>
-              <div style="font-size:34px;font-weight:750;letter-spacing:-.02em;margin-top:2px">${overall}%</div>
-            </div>
-            <div class="row">
-              <select class="select" id="scopeSel" style="width:auto">
-                <option value="overall"${scope === 'overall' ? ' selected' : ''}>Overall</option>
-                ${habitOpts}
-              </select>
-              <select class="select" id="rangeSel" style="width:auto">
-                <option value="30"${range === '30' ? ' selected' : ''}>Last 30 days</option>
-                <option value="90"${range === '90' ? ' selected' : ''}>Last 90 days</option>
-                <option value="month"${range === 'month' ? ' selected' : ''}>This month</option>
-                <option value="arc"${range === 'arc' ? ' selected' : ''}>Whole arc</option>
-              </select>
-            </div>
-          </div>
-          <div class="chart" id="consChart" style="margin-top:16px"></div>
-          ${scope !== 'overall'
-            ? `<p class="dim" style="font-size:11.5px;margin:8px 2px 0">7-day rolling average for this habit.</p>` : ''}
-        </div>
-
-        <div class="tiles">
-          <div class="tile"><span class="card-label">This week</span><b>${thisWeek}%</b></div>
-          <div class="tile"><span class="card-label">vs last week</span>
-            <b style="color:${delta > 0 ? 'var(--good)' : delta < 0 ? 'var(--critical)' : 'inherit'}">
-              ${delta > 0 ? '+' : ''}${delta}%</b></div>
-          <div class="tile"><span class="card-label">Best streak</span>
-            <b style="color:var(--flame)">${best}<span style="font-size:14px"> days</span></b></div>
-          <div class="tile"><span class="card-label">Needs attention</span>
-            <b class="sm truncate">${weak ? esc(weak.name) : '—'}</b></div>
-        </div>
-
-        <div class="two-col">
-          <div class="card">
-            <div class="between">
-              <div class="card-label">Habit leaderboard</div>
-              <div class="seg seg-sm" id="lbSeg">
-                <button data-p="7"  class="${lbPeriod === '7'  ? 'is-active' : ''}">7d</button>
-                <button data-p="30" class="${lbPeriod === '30' ? 'is-active' : ''}">30d</button>
-                <button data-p="90" class="${lbPeriod === '90' ? 'is-active' : ''}">90d</button>
+        <div class="istack">
+          <section class="mod">
+            <div class="mh">
+              <span class="lb">01 / Consistency</span>
+              <div class="ictl">
+                <select class="select" id="scopeSel" aria-label="Scope">
+                  <option value="overall"${scope === 'overall' ? ' selected' : ''}>Overall</option>
+                  ${habitOpts}
+                </select>
+                <select class="select" id="rangeSel" aria-label="Range">
+                  <option value="30"${range === '30' ? ' selected' : ''}>Last 30 days</option>
+                  <option value="90"${range === '90' ? ' selected' : ''}>Last 90 days</option>
+                  <option value="month"${range === 'month' ? ' selected' : ''}>This month</option>
+                  <option value="arc"${range === 'arc' ? ' selected' : ''}>Whole arc</option>
+                </select>
               </div>
             </div>
-            ${board.length ? board.map((b, i) => `
-              <div class="lb-item">
-                <span class="rank">${i + 1}</span>
-                <div>
-                  <div class="lb-name truncate">${esc(b.h.name)}</div>
-                  <div class="lb-track" title="${b.v}%">
-                    <div class="lb-fill" style="width:${b.v}%;background:${b.h.color}"></div></div>
+            <div class="ihead">
+              <b class="dotnum ipct">${overall}%</b>
+              <span class="lb truncate">${scopeHabit ? esc(scopeHabit.name) : 'Overall'} consistency</span>
+            </div>
+            <div class="chart" id="consChart"></div>
+            ${scopeHabit ? '<p class="inote">7-day rolling average for this habit.</p>' : ''}
+            <div class="spec">
+              <div><span class="lb">This week</span><b>${thisWeek}%</b></div>
+              <div><span class="lb">vs last week</span><b class="${deltaCls}">${deltaTxt}</b></div>
+              <div><span class="lb">Best streak</span>
+                <b class="ibest">${UI.emoji('fire', { lit: best >= 3, size: 20 })}${best}<small>days</small></b></div>
+              <div><span class="lb">Needs attention</span>
+                <b class="isml truncate">${weak ? esc(weak.name) : '—'}</b></div>
+            </div>
+          </section>
+
+          <div class="itwo">
+            <section class="mod">
+              <div class="mh">
+                <span class="lb">02 / Leaderboard</span>
+                <div class="seg seg-sm" id="lbSeg">
+                  <button data-p="7"  class="${lbPeriod === '7'  ? 'is-active' : ''}">7d</button>
+                  <button data-p="30" class="${lbPeriod === '30' ? 'is-active' : ''}">30d</button>
+                  <button data-p="90" class="${lbPeriod === '90' ? 'is-active' : ''}">90d</button>
                 </div>
-                <span class="lb-val">${b.v}%</span>
-              </div>`).join('') : '<div class="empty">No habits yet.</div>'}
+              </div>
+              ${board.length
+                ? board.map((b, i) => lrow(i, b.h, Math.round(b.v / 5), b.v + '%', `${b.h.name}: ${b.v}%`)).join('')
+                : '<div class="empty">No habits yet.</div>'}
+            </section>
+
+            <section class="mod">
+              <div class="mh"><span class="lb">03 / Top streaks</span></div>
+              ${streaks.length
+                ? streaks.map((x, i) => lrow(i, x.h, Math.round(Math.min(1, x.s / Math.max(1, best)) * 20),
+                    x.s + 'd', `${x.h.name}: ${x.s} day streak`)).join('')
+                : '<div class="empty">No habits yet.</div>'}
+            </section>
           </div>
 
-          <div class="card">
-            <div class="card-label">Top streaks</div>
-            ${streaks.length ? streaks.map(s => `
-              <div class="lb-item">
-                <span class="rank" style="color:var(--flame)">${UI.ICON.flame}</span>
-                <div>
-                  <div class="lb-name truncate">${esc(s.h.name)}</div>
-                  <div class="lb-track" title="${s.s} day streak">
-                    <div class="lb-fill" style="width:${Math.min(100, s.s / Math.max(1, best) * 100)}%;
-                         background:${s.h.color}"></div></div>
-                </div>
-                <span class="lb-val" style="color:var(--accent)">${s.s}d</span>
-              </div>`).join('') : '<div class="empty">No habits yet.</div>'}
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:12px">
-          <div class="card-label">Month by month · consistency across the arc</div>
-          <div class="wbars" style="margin-top:16px;height:132px">
-            ${months.map(mo => `
-              <div class="wbar" title="${mo.label} ${mo.year}: ${mo.score == null ? 'not started' : mo.score + '%'}">
-                <div class="wbar-track">
-                  <div class="wbar-fill" style="height:${mo.score == null ? 0 : Math.max(mo.score, 2)}%;
-                       background:${mo.score == null ? 'var(--surface-3)' : 'var(--accent)'}"></div>
-                </div>
-                <span>${mo.label}</span>
-                <span style="font-size:9.5px;color:var(--text-muted)">${mo.score == null ? '–' : mo.score + '%'}</span>
-              </div>`).join('')}
-          </div>
+          <section class="mod">
+            <div class="mh"><span class="lb">04 / Month by month</span>
+              <span class="lb">Consistency across the arc</span></div>
+            <div class="mcols scroll-x"><div class="wcols">${monthCols}</div></div>
+          </section>
         </div>`;
 
       Charts.lines(el.querySelector('#consChart'), {
-        height: 230, area: true, yMax: 100,
+        height: 220, area: true, yMax: 100,
         labels: keys.map(k => {
           const d = D.parse(k);
           return `${d.getDate()} ${D.MONTHS[d.getMonth()].slice(0, 3)}`;
@@ -195,11 +203,15 @@
         tipTitle: i => D.longDate(D.parse(keys[i])),
         fmt: v => v + '%',
         series: [{
-          name: scope === 'overall' ? 'Consistency'
-                : (Store.state.habits.find(h => h.id === scope) || {}).name || 'Habit',
+          name: scopeHabit ? scopeHabit.name : 'Consistency',
           color: 'var(--accent)', values: vals
         }]
       });
+
+      // a long arc scrolls sideways on a phone: open on the current month
+      const mc = el.querySelector('.mcols'), cur = mc.querySelector('.is-today');
+      if (cur) mc.scrollLeft = Math.max(0, cur.getBoundingClientRect().left - mc.getBoundingClientRect().left
+        + mc.scrollLeft - (mc.clientWidth - cur.offsetWidth) / 2);
 
       el.querySelector('#scopeSel').onchange = e => { scope = e.target.value; App.render(); };
       el.querySelector('#rangeSel').onchange = e => { range = e.target.value; App.render(); };
