@@ -36,7 +36,11 @@
   function modal(heading, html, onMount, onClose) {
     // a dialog opened over another (confirm) must hand focus back to the original opener
     if (root.hidden) lastFocus = document.activeElement;
+    // replacing a modal that is still open must not strand its onClose (e.g. the first-connect
+    // dialog resolves its promise there). confirm() hands the parent's hook on, so it is not run here.
+    const replaced = !root.hidden ? onCloseHook : null;
     onCloseHook = onClose || null;
+    if (replaced && replaced !== onCloseHook) { try { replaced(); } catch (e) { console.error(e); } }
     title.textContent = heading;
     body.innerHTML = html;
     root.hidden = false;

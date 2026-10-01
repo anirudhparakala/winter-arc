@@ -179,6 +179,43 @@ assert.ok(!UI.streakChip(2).includes('is-hot'));
   assert.strictEqual(closed, 2, 'no stale hook leaks into later dialogs');
 }
 
+/* ---------- modal() replacing an open modal runs the replaced modal's onClose hook ---------- */
+// (the first-connect dialog resolves its promise in that hook; if another modal replaced it silently
+//  the sync engine would wait forever)
+{
+  const k = loadUI({ getItem: () => null, setItem() {} });
+  const U = k.window.UI;
+  let a = 0, b = 0;
+  U.modal('A', '<p>', null, () => a++);
+  U.modal('B', '<p>', null, () => b++);
+  assert.strictEqual(a, 1, 'opening B over A runs the hook of A');
+  assert.strictEqual(b, 0, 'B is still open');
+  U.close();
+  assert.strictEqual(a, 1, 'the hook of A does not run a second time');
+  assert.strictEqual(b, 1, 'closing B runs the hook of B once');
+  U.modal('C', '<p>', null, () => a++);       // nothing open now: no stale hook to run
+  assert.strictEqual(b, 1);
+  U.close();
+  assert.strictEqual(a, 2);
+
+  // the first-connect promise pattern: a dialog replaced by another modal settles with null
+  let settle; const asked = new Promise(r => { settle = r; });
+  U.modal('Connect this device', '<p>', null, () => settle(null));
+  U.modal('New habit', '<p>');
+  asked.then(v => assert.strictEqual(v, null, 'dialog promise settles with null when replaced'));
+  let resolved = false; asked.then(() => { resolved = true; });
+  Promise.resolve().then(() => Promise.resolve()).then(() => assert.ok(resolved, 'dialog promise did settle'));
+  U.close();
+
+  // a dialog that hands its own hook on (confirm over Settings) must not run it when it replaces
+  k.__els.modalBody.querySelector = () => stubEl();
+  let hook = 0; U.modal('Settings', '<p>', null, () => hook++);
+  U.confirm('Sure?', () => {});
+  assert.strictEqual(hook, 0, 'confirm() transfers the hook: nothing runs until the confirm closes');
+  U.close();
+  assert.strictEqual(hook, 1);
+}
+
 /* ---------- modal(): no auto-focus of the first input on coarse pointers ---------- */
 {
   function modalRun(media) {
