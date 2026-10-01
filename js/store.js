@@ -216,7 +216,9 @@
     const next = migrate(JSON.parse(JSON.stringify(snap)));
     next.settings.theme = theme;
     state = next;
-    persist(); emit();
+    persist();
+    // the state is already replaced and saved: a throwing render listener must not make the caller think it failed
+    try { emit(); } catch (e) { console.error('Winter Arc: a listener failed after sync.', e); }
   }
 
   /* ---------------- habit log ---------------- */

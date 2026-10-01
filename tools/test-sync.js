@@ -378,7 +378,7 @@ test('17 notifyLocalChange never throws (broken storage)', async () => {
 
 /** wraps a fake server so a test can break/hold individual requests (all flags off by default) */
 function tamper(srv) {
-  const T = { patchFail: null, patchEmpty: false, junk: false, hang: false, holdGet: null, holdRefresh: null, signIn: null };
+  const T = { patchFail: null, patchEmpty: false, junk: false, hang: false, holdGet: null, holdRefresh: null, signIn: null, junkGet: false, junkPost: false };
   const resp = (status, json) => ({ status, ok: status >= 200 && status < 300, json: async () => json });
   const fetchImpl = async (url, init) => {
     const u = new URL(url), rest = u.pathname === '/rest/v1/user_state', m = init.method;
@@ -388,7 +388,7 @@ function tamper(srv) {
       return resp(T.patchFail, { message: 'boom' });
     }
     if (rest && m === 'PATCH' && T.patchEmpty) { srv.S.calls.push('PATCH ' + u.pathname); return resp(200, []); }
-    if (rest && T.junk && (m === 'GET' || m === 'POST')) { srv.S.calls.push(m + ' ' + u.pathname); return { status: 200, ok: true, json: async () => { throw new Error('not json'); } }; }
+    if (rest && ((T.junk && (m === 'GET' || m === 'POST')) || (T.junkGet && m === 'GET') || (T.junkPost && m === 'POST'))) { srv.S.calls.push(m + ' ' + u.pathname); return { status: 200, ok: true, json: async () => { throw new Error('not json'); } }; }
     if (rest && m === 'GET' && T.hang) return new Promise(() => {});
     if (rest && m === 'GET' && T.holdGet) await T.holdGet;
     if (u.pathname === '/auth/v1/token' && u.searchParams.get('grant_type') === 'refresh_token' && T.holdRefresh) await T.holdRefresh;
@@ -656,12 +656,116 @@ test('32 dirty state survives a reload: a new engine on the same storage pushes 
   assert.strictEqual(J(srv.S.rows.u1.data).logs[h][D1], true);
 });
 
+/* ================= fix round 2 ================= */
+
+test('33 interactive request arriving during a background run is not lost', async () => {
+  const { srv, B } = await bothHaveData(null);
+  await B.sync.signIn('me@x.com', 'pw');                       // dialog dismissed: attention
+  assert.strictEqual(B.sync.status().state, 'attention');
+  const T = tamper(srv); let asked = 0;
+  const B2 = device(T, { mem: B.mem, ask: () => { asked++; return 'cloud'; } });
+  const g = gate(); T.T.holdGet = g.p;
+  const p1 = B2.sync.syncNow(); await settle();                // background pass in flight (GET held)
+  const p2 = B2.sync.syncNow({ interactive: true });           // user taps Sync now meanwhile
+  g.open();
+  assert.strictEqual(await p2, 'downloaded');
+  assert.strictEqual(await p1, 'downloaded');
+  assert.strictEqual(asked, 1, 'the dialog must open for the interactive request');
+  assert.strictEqual(B2.sync.status().state, 'idle');
+});
+
+test('34 overwriteCloud waiting on a running sync, then signOut: status stays signedOut', async () => {
+  const srv = fakeSupabase(); const T = tamper(srv); const A = device(T); await A.sync.signIn('me@x.com', 'pw');
+  tick(A, habitId(A), D1);
+  const g = gate(); T.T.holdGet = g.p;
+  const p = A.sync.syncNow(); await settle();
+  const po = A.sync.overwriteCloud();                          // waits for the running pass
+  await settle();
+  await A.sync.signOut();
+  srv.S.calls.length = 0; g.open();
+  await p; assert.strictEqual(await po, false); await settle();
+  assert.strictEqual(A.sync.status().state, 'signedOut');
+  assert.strictEqual(A.sync.status().message, 'Signed out');
+  assert.ok(!('winterArc.sync.base' in A.mem));
+  assert.strictEqual(calls(srv.S, /^(PATCH|POST \/rest)/).length, 0);
+});
+
+test('35 applySynced throwing inside a render listener: run completes, base advanced, tokens stay 7', async () => {
+  const srv = fakeSupabase(); const A = await signedIn(srv); const B = await signedIn(srv); const h = habitId(A);
+  assert.ok(B.store.freeze(h, D2)); assert.strictEqual(await B.sync.syncNow(), 'pushed');   // cloud tokens 8
+  assert.ok(A.store.freeze(h, D1));                                                          // local tokens 8
+  let boom = true; A.store.subscribe(() => { if (boom) { boom = false; throw new Error('render exploded'); } });
+  const quiet = A.ctx.console; A.ctx.console = { log() {}, warn() {}, error() {} };
+  const out = await A.sync.syncNow();
+  A.ctx.console = quiet;
+  assert.strictEqual(out, 'merged');
+  assert.strictEqual(A.sync.status().state, 'idle');
+  assert.strictEqual(J(A.store.snapshot()).freezeTokens, 7);
+  assert.strictEqual(J(srv.S.rows.u1.data).freezeTokens, 7);
+  assert.strictEqual(base(A).version, srv.S.rows.u1.version);
+  tick(A, h, D3); assert.strictEqual(await A.sync.syncNow(), 'pushed');
+  assert.strictEqual(J(A.store.snapshot()).freezeTokens, 7);
+});
+
+test('36 sign-out uses local scope (does not revoke the other devices)', async () => {
+  const srv = fakeSupabase(); const A = await signedIn(srv); srv.S.calls.length = 0;
+  await A.sync.signOut();
+  const c = calls(srv.S, /logout/);
+  assert.strictEqual(c.length, 1);
+  assert.ok(/^POST \/auth\/v1\/logout\?scope=local$/.test(c[0]), c[0]);
+});
+
+test('22b stale run after sign-out + sign-in as ANOTHER account is stopped by the generation guard', async () => {
+  const srv = fakeSupabase(); srv.S.users['you@x.com'] = { id: 'u2', password: 'pw' };
+  const C = device(srv); tick(C, habitId(C), D3); await C.sync.signIn('you@x.com', 'pw');   // u2's cloud row: D3, v1
+  const T = tamper(srv); let asked = 0;
+  const A = device(T, { ask: () => { asked++; return null; } });
+  await A.sync.signIn('me@x.com', 'pw'); tick(A, habitId(A), D1);                          // u1 row v1, unsynced edit
+  const u2Before = JSON.stringify(srv.S.rows.u2), u1Before = JSON.stringify(srv.S.rows.u1);
+  const g = gate(); T.T.holdGet = g.p;
+  const p = A.sync.syncNow(); await settle();                                              // old run: GET (u1) held
+  await A.sync.signOut();
+  const pi = A.sync.signIn('you@x.com', 'pw'); await settle();                             // a session exists again (u2); its sync waits for the old run
+  g.open(); await p; await pi; await settle();
+  assert.strictEqual(JSON.stringify(srv.S.rows.u2), u2Before, "the stale u1 run must not touch u2's row");
+  assert.strictEqual(JSON.stringify(srv.S.rows.u1), u1Before);
+  assert.ok(!base(A), 'no base may be written (the new pass is waiting for the first-connect choice)');
+  assert.strictEqual(asked, 1);
+  assert.strictEqual(A.sync.status().state, 'attention');
+});
+
+test('20b junk reply on GET only: error, POST never reached, no base', async () => {
+  const srv = fakeSupabase(); const T = tamper(srv); const B = device(T); tick(B, habitId(B), D2);
+  T.T.junkGet = true;
+  assert.strictEqual(await B.sync.signIn('me@x.com', 'pw'), 'error');
+  assert.strictEqual(calls(srv.S, /^POST \/rest/).length, 0);
+  assert.ok(!base(B)); assert.ok(!srv.S.rows.u1);
+  T.T.junkGet = false;
+  assert.strictEqual(await B.sync.syncNow(), 'uploaded');
+});
+test('20c junk reply on POST only (GET returns []): error, no base, retry uploads', async () => {
+  const srv = fakeSupabase(); const T = tamper(srv); const B = device(T); tick(B, habitId(B), D2);
+  T.T.junkPost = true;
+  assert.strictEqual(await B.sync.signIn('me@x.com', 'pw'), 'error');
+  assert.ok(!base(B)); assert.ok(!srv.S.rows.u1);
+  T.T.junkPost = false;
+  assert.strictEqual(await B.sync.syncNow(), 'uploaded');
+  assert.strictEqual(srv.S.rows.u1.version, 1);
+});
+
+/* a never-settling promise would otherwise end the process silently with exit code 0 */
+let finished = false;
+process.on('exit', code => { if (!finished && !code) { console.log('  FAIL tests did not finish (a promise never settled): ' + (pass + fail) + ' of ' + tests.length + ' ran'); process.exitCode = 1; } });
+setTimeout(() => { console.log('  FAIL watchdog: tests did not finish within 60 s'); process.exit(1); }, 60000).unref();
+
 (async () => {
   for (const [name, fn] of tests) {
     try { await fn(); pass++; console.log('  ok   ' + name); }
     catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + (e && e.message)); }
   }
+  finished = true;
   console.log(`\n${pass} passed, ${fail} failed`);
+  if (pass + fail !== tests.length) { console.log('  FAIL ran ' + (pass + fail) + ' of ' + tests.length + ' tests'); process.exit(1); }
   if (fail) process.exit(1);
   console.log('sync ok');
 })();

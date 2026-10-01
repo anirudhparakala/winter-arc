@@ -513,6 +513,16 @@ test('applySynced with a snapshot that has no theme leaves the theme the user ha
   c.Store.applySynced(snap);
   assert.strictEqual(c.Store.state.settings.theme, 'light');
 });
+test('applySynced completes even if a render listener throws (state + persistence updated, error logged)', () => {
+  const c = freshStore(); const errs = [];
+  c.console = { log() {}, warn() {}, error: (...a) => errs.push(a) };
+  let boom = true; c.Store.subscribe(() => { if (boom) { boom = false; throw new Error('render exploded'); } });
+  const snap = c.Store.snapshot(); snap.habits[0].name = 'Synced';
+  assert.doesNotThrow(() => c.Store.applySynced(snap));
+  assert.strictEqual(c.Store.state.habits[0].name, 'Synced');
+  assert.strictEqual(JSON.parse(c.localStorage.getItem()).habits[0].name, 'Synced');
+  assert.strictEqual(errs.length, 1);
+});
 test('onLocalChange fires for commit, importJSON and reset', () => {
   const c = freshStore(); let n = 0; c.Store.onLocalChange(() => n++);
   c.Store.commit(s => { s.freezeTokens = 5; });

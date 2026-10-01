@@ -3,6 +3,13 @@
    Every external thing (fetch, storage, store, merge, timers) is injected so
    tools/test-sync.js can drive it against a fake server. See the cloud-sync spec.
 
+   Known limits (accepted):
+   - Two tabs sharing one storage are only coordinated for the token refresh; reloading on a
+     `storage` event is the UI task's job.
+   - A PATCH that was applied but whose response was lost can leave one freeze token of drift
+     (self-limiting: the next sync sees the new version and merges).
+   - jsonb does not keep key order; irrelevant because Merge.equal ignores order.
+
    syncNow({interactive:true}) may open the first-connect dialog (Sync now button, sign-in);
    plain syncNow() (debounce, visibility, polling) never asks.
    ============================================================ */
@@ -238,7 +245,11 @@
             interactive = false; againInteractive = false;
             setStatus({ state: 'syncing', message: 'Syncing…' });
             try { out = await run(live, ask); }
-            catch (e) { if (g !== gen) { out = 'skipped'; continue; } throw e; }   // signed out / re-signed in meanwhile
+            catch (e) {
+              if (g !== gen) { out = 'skipped'; continue; }          // signed out / re-signed in meanwhile
+              if (againInteractive) continue;                        // an interactive request arrived mid-run: honour it with another pass
+              throw e;
+            }
             if (g !== gen) { out = 'skipped'; continue; }
             setStatus({ state: 'idle', message: 'Synced', lastSyncedAt: now(), email: (readJSON(SESSION_KEY) || {}).email || st.email });
           } while (again);
@@ -279,15 +290,16 @@
       const s = readJSON(SESSION_KEY);
       drop(SESSION_KEY); drop(BASE_KEY);
       setStatus({ state: configured() ? 'signedOut' : 'unconfigured', message: 'Signed out', email: null, lastSyncedAt: null });
-      if (s && s.accessToken && configured()) { try { await http('POST', '/auth/v1/logout', { token: s.accessToken }); } catch (e) { /* offline: already signed out locally */ } }
+      if (s && s.accessToken && configured()) { try { await http('POST', '/auth/v1/logout?scope=local', { token: s.accessToken }); } catch (e) { /* offline: already signed out locally */ } }
     }
 
     /** used after Reset: make the cloud copy equal this device, whatever the cloud holds */
     async function overwriteCloud() {
       if (!configured() || !hasSession()) return false;
-      if (running) await running;
-      const live = guard();
+      const live = guard();                                // taken BEFORE waiting, so a sign-out during the wait is noticed
       try {
+        if (running) await running;
+        live();
         const s = await ensureSession(); live();
         for (let i = 0; i < MAX_ATTEMPTS; i++) {
           const row = await getRow(s); live();
