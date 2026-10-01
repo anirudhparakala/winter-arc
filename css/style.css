@@ -353,10 +353,6 @@ button:active { transform: translateY(1px); }
 }
 
 /* ---------- HABITS ---------- */
-/* arc-track / arc-fill belong to Goals now (Habits no longer uses them); .hmark is Today's */
-.arc-track { height: 4px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin-top: 10px; }
-.arc-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width .4s; }
-
 .hstack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin-top: 8px;
           background: var(--rule); border: 1px solid var(--rule); }
 .hstack > .mod { min-width: 0; }
@@ -555,31 +551,66 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 .wbar.is-today span { color: var(--accent); }
 
 /* ---------- GOALS ---------- */
-.goal-hero { display: flex; align-items: center; gap: 20px; margin-top: 14px; }
-.areas { display: grid; grid-template-columns: repeat(auto-fit, minmax(188px, 1fr)); gap: 10px; }
-.area-card { padding: 13px 15px; border-radius: 13px; cursor: pointer;
-             background: var(--surface-1); border: 1px solid var(--border-soft); transition: .15s; text-align: left; }
-.area-card:hover { border-color: var(--border); background: var(--surface-2); }
-.area-card.is-active { border-color: var(--accent); background: var(--accent-ghost); }
-.area-card b { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
-.area-card span { display: block; margin-top: 5px; font-size: 11.5px; color: var(--text-muted); }
+.goal-hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 28px; align-items: center;
+             margin-top: 8px; border: 1px solid var(--rule); }
+.gh-num { font-size: 72px; line-height: .85; white-space: nowrap; }
+.gh-main { display: grid; gap: 12px; min-width: 0; }
+.goal-hero .lb { color: var(--g1); }
+.gtags { display: flex; flex-wrap: wrap; gap: 8px; }
+.goal-hero .segbar, .goal-card .segbar { gap: 2px; }
 
-.goal-card { padding: 17px 20px; border-radius: 14px; margin-bottom: 10px;
-             background: var(--surface-1); border: 1px solid var(--border-soft); }
-.goal-card.is-done { opacity: .72; }
-.goal-title { font-size: 15px; font-weight: 650; }
-.goal-card.is-done .goal-title { text-decoration: line-through; }
-.gtrack { height: 7px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin-top: 13px; }
-.gfill { height: 100%; border-radius: 99px; background: var(--accent); transition: width .4s; }
-.pin { border: 0; background: transparent; cursor: pointer; color: var(--text-muted);
-       padding: 2px; transition: .15s; }
-.pin:hover { color: var(--text-secondary); }
-.pin.is-on { color: var(--critical); }
-.ms-list { margin-top: 12px; display: flex; flex-direction: column; gap: 5px; }
-.ms-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
-.ms-item .check { width: 17px; height: 17px; border-radius: 5px; }
-.ms-item .check .ico { width: 10px; }
-.ms-item.is-done span { text-decoration: line-through; color: var(--text-muted); }
+.areas { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px;
+         background: var(--rule); border: 1px solid var(--rule); }
+.area-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+             min-height: 120px; margin: 0; padding: 16px 14px; border: 0; border-radius: 0;
+             background: var(--panel); color: var(--text); text-align: left; cursor: pointer;
+             transition: transform .12s var(--snap), background .1s var(--snap), box-shadow .1s var(--snap); }
+.area-card .emo { margin-bottom: 8px; transform-origin: 50% 90%; }
+.area-card b { font: 500 13px var(--f-ui); }
+.area-card span { font: 11px var(--f-mono); letter-spacing: .04em; color: var(--g1); }
+.area-card:hover, .area-card:active { z-index: 1; transform: translateY(-2px); background: var(--bg);
+                                      box-shadow: 0 0 0 1px var(--rule-2); }
+.area-card:hover .emo, .area-card:active .emo, .area-card:focus-visible .emo { animation: awig .5s ease-in-out; }
+.area-card.is-active { z-index: 1; box-shadow: 0 0 0 1px var(--accent); }
+.area-card.is-active b { color: var(--accent); }
+@keyframes awig { 25% { transform: rotate(-10deg) scale(1.12); } 75% { transform: rotate(10deg) scale(1.12); } }
+
+.glist { display: grid; gap: 8px; }
+.glist .empty { color: var(--g1); }
+.goal-card { display: grid; gap: 14px; padding: 18px; background: var(--panel); border: 1px solid var(--rule); }
+.goal-card.is-done { border-color: var(--rule-2); }
+.gtop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.goal-title { font: 600 16px/1.3 var(--f-ui); overflow-wrap: anywhere; }
+.goal-card.is-done .goal-title { text-decoration: line-through; color: var(--g1); }
+.goal-card .gtags { margin-top: 10px; }
+.goal-card .pill.is-prog { color: var(--text); }
+.goal-card .pill.is-over { border-color: #ffb86b; color: #ffb86b; }
+:root[data-theme="light"] .goal-card .pill.is-over { border-color: #a85a00; color: #a85a00; }
+.gact { display: flex; gap: 8px; flex: none; }
+.pin.is-on { color: var(--accent); border-color: var(--accent); }
+.gmeta { display: flex; align-items: center; gap: 10px; font: 11px var(--f-mono);
+         letter-spacing: .1em; text-transform: uppercase; color: var(--g1); }
+.gmeta .gnum { width: 92px; font: 13px var(--f-mono); letter-spacing: 0; text-transform: none; }
+.gprog { display: flex; align-items: center; gap: 14px; }
+.gprog .segbar { flex: 1; min-width: 0; }
+.gprog b { min-width: 44px; text-align: right; font: 700 13px var(--f-mono); font-variant-numeric: tabular-nums; }
+.ms-list { display: grid; gap: 2px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.ms-item { display: flex; align-items: center; gap: 12px; min-height: 32px; font-size: 13px; line-height: 1.35; }
+.ms-item.is-done span { text-decoration: line-through; color: var(--g1); }
+
+@media (max-width: 760px) {
+  .goal-hero { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .gh-num { font-size: 56px; }
+  .goal-hero .btn { min-height: 44px; }
+  .areas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .area-card { min-height: 104px; padding: 14px 12px; }
+  .section-label .gclear { min-height: 44px; margin: -12px 0; }
+  .goal-card { padding: 16px 14px; }
+  .gact { gap: 4px; margin: -8px -8px 0 0; }
+  .gmeta .gnum { min-height: 44px; font-size: 16px; }
+  .ms-item { min-height: 48px; }
+  .ms-item .check::before { content: ""; position: absolute; inset: -14px; }
+}
 
 /* ---------- INSIGHTS ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 12px; }

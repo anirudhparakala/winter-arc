@@ -13,6 +13,7 @@
       title: '', area: 'health', type: 'milestone', target: 10, current: 0,
       unit: '', deadline: a.end, status: 'in-progress', pinned: false, milestones: []
     };
+    const wasDone = !!existing && existing.status === 'achieved';
     const areaOpts = Store.AREAS.map(x =>
       `<option value="${x.id}"${x.id === g.area ? ' selected' : ''}>${x.icon} ${esc(x.name)}</option>`).join('');
 
@@ -92,12 +93,13 @@
           pinned: m.querySelector('#gPin').checked,
           milestones
         };
+        const id = existing ? existing.id : Store.uid();
         Store.commit(s => {
-          if (existing) Object.assign(s.goals.find(x => x.id === existing.id), patch);
-          else s.goals.push(Object.assign({ id: Store.uid(), current: 0,
-                                            createdAt: D.todayKey() }, patch));
+          if (existing) Object.assign(s.goals.find(x => x.id === id), patch);
+          else s.goals.push(Object.assign({ id, current: 0, createdAt: D.todayKey() }, patch));
         });
         UI.close();
+        if (!wasDone && patch.status === 'achieved') UI.celebrateOnce('goal:' + id, 'trophy');
       };
 
       if (existing) m.querySelector('#gDel').onclick = () => {
@@ -109,61 +111,66 @@
     });
   }
 
+  /** the trophy plays once per goal, and only when a user action made it achieved */
+  function celebrateIfNew(id, before) {
+    const g = Store.state.goals.find(x => x.id === id);
+    if (g && before !== 'achieved' && g.status === 'achieved') UI.celebrateOnce('goal:' + id, 'trophy');
+  }
+
   function goalCard(g) {
     const pct = Store.goalProgress(g);
     const left = Store.daysLeft(g);
     const area = Store.area(g.area);
     const done = g.status === 'achieved';
-    const statusPill = done ? '<span class="pill pill-good">Achieved</span>'
+    const statusTag = done ? '<span class="pill pill-accent">Achieved</span>'
       : g.status === 'planned' ? '<span class="pill">Planned</span>'
-      : '<span class="pill pill-accent">In progress</span>';
+      : '<span class="pill is-prog">In progress</span>';
     const overdue = left != null && left < 0 && !done;
+    const ms = g.milestones || [];
 
     return `
-      <div class="goal-card${done ? ' is-done' : ''}" data-goal="${g.id}">
-        <div class="between">
+      <article class="goal-card${done ? ' is-done' : ''}" data-goal="${esc(g.id)}">
+        <div class="gtop">
           <div class="grow">
             <div class="goal-title">${esc(g.title)}</div>
-            <div class="row" style="margin-top:9px;gap:8px;flex-wrap:wrap">
-              ${statusPill}
-              <span class="pill">${area.icon} ${esc(area.name)}</span>
-              ${left != null ? `<span class="pill${overdue ? ' pill-warn' : ''}">
+            <div class="gtags">
+              ${statusTag}
+              <span class="pill">${UI.emoji(area.emoji, { size: 14 })} ${esc(area.name)}</span>
+              ${left != null ? `<span class="pill${overdue ? ' is-over' : ''}">
                 ${overdue ? `${Math.abs(left)} days over` : `${left} days left`}</span>` : ''}
             </div>
           </div>
-          <div class="row">
-            <button class="pin${g.pinned ? ' is-on' : ''}" data-act="pin"
-                    aria-label="Pin goal" title="Pin to top priorities">${UI.ICON.pin}</button>
-            <button class="icon-btn sm" data-act="edit" aria-label="Edit goal">${UI.ICON.edit}</button>
+          <div class="gact">
+            <button class="icon-btn sm pin${g.pinned ? ' is-on' : ''}" data-act="pin"
+                    aria-pressed="${!!g.pinned}" aria-label="Pin goal: ${esc(g.title)}"
+                    title="Pin to top priorities">${UI.ICON.pin}</button>
+            <button class="icon-btn sm" data-act="edit"
+                    aria-label="Edit goal: ${esc(g.title)}">${UI.ICON.edit}</button>
           </div>
         </div>
 
         ${g.type === 'numeric' ? `
-          <div class="row" style="margin-top:13px;gap:8px">
-            <input class="input" type="number" style="width:92px" data-act="num"
-                   value="${g.current || 0}" min="0" aria-label="Current progress">
-            <span class="dim" style="font-size:12.5px">of ${g.target} ${esc(g.unit || '')}</span>
-            <span class="grow"></span>
-            <b style="font-variant-numeric:tabular-nums">${pct}%</b>
+          <div class="gmeta">
+            <input class="input gnum" type="number" data-act="num"
+                   value="${g.current || 0}" min="0" aria-label="Current progress: ${esc(g.title)}">
+            <span>of ${g.target} ${esc(g.unit || '')}</span>
           </div>` : `
-          <div class="between" style="margin-top:13px">
-            <span class="dim" style="font-size:12.5px">
-              ${(g.milestones || []).filter(m => m.done).length} of ${(g.milestones || []).length} milestones</span>
-            <b style="font-variant-numeric:tabular-nums">${pct}%</b>
+          <div class="gmeta">
+            <span>${ms.filter(m => m.done).length} of ${ms.length} milestones</span>
           </div>`}
 
-        <div class="gtrack"><div class="gfill" style="width:${pct}%"></div></div>
+        <div class="gprog">${Charts.segments(Math.round(pct / 5), 20)}<b>${pct}%</b></div>
 
-        ${(g.milestones || []).length ? `
+        ${ms.length ? `
           <div class="ms-list">
-            ${g.milestones.map(mm => `
+            ${ms.map(mm => `
               <div class="ms-item${mm.done ? ' is-done' : ''}">
-                <button class="check${mm.done ? ' is-done' : ''}" data-act="ms" data-ms="${mm.id}"
+                <button class="check${mm.done ? ' is-done' : ''}" data-act="ms" data-ms="${esc(mm.id)}"
                         aria-pressed="${mm.done}" aria-label="${esc(mm.text)}">${UI.ICON.check}</button>
                 <span>${esc(mm.text)}</span>
               </div>`).join('')}
           </div>` : ''}
-      </div>`;
+      </article>`;
   }
 
   Views.goals = {
@@ -180,44 +187,43 @@
       const areaCards = Store.AREAS.map(x => {
         const list = goals.filter(g => g.area === x.id);
         const ach = list.filter(g => g.status === 'achieved').length;
-        return `<button class="area-card${areaFilter === x.id ? ' is-active' : ''}" data-area="${x.id}">
-          <b>${x.icon} ${esc(x.name)}</b>
+        const on = areaFilter === x.id;
+        return `<button class="area-card${on ? ' is-active' : ''}" data-area="${esc(x.id)}"
+                        aria-pressed="${on}">
+          ${UI.emoji(x.emoji, { lit: list.length > 0, size: 28 })}
+          <b>${esc(x.name)}</b>
           <span>${list.length} goal${list.length === 1 ? '' : 's'} · ${ach} achieved</span>
         </button>`;
       }).join('');
 
       el.innerHTML = `
-        <div class="card goal-hero">
-          ${Charts.ring(goals.length ? Math.round(achieved / goals.length * 100) : 0,
-                        { size: 92, stroke: 9 })}
-          <div class="grow">
-            <div class="card-label">Goals achieved</div>
-            <div style="font-size:19px;font-weight:650;margin-top:4px">
-              ${achieved}/${goals.length} · mastering ${areasUsed} area${areasUsed === 1 ? '' : 's'}
-            </div>
-            <div class="row" style="margin-top:9px;gap:8px;flex-wrap:wrap">
+        <section class="mod goal-hero">
+          <b class="dotnum gh-num">${achieved}/${goals.length}</b>
+          <div class="gh-main">
+            <div class="lb">goals achieved · mastering ${areasUsed} area${areasUsed === 1 ? '' : 's'}</div>
+            <div class="gtags">
               <span class="pill">${esc(D.parse(a.start).toDateString().slice(4))} → ${esc(D.parse(a.end).toDateString().slice(4))}</span>
               <span class="pill pill-accent">${a.left} days left in the arc</span>
             </div>
-            <div class="arc-track"><div class="arc-fill" style="width:${a.pct}%"></div></div>
+            ${Charts.segments(Math.round(a.pct / 5), 20)}
           </div>
-          <button class="btn btn-primary" id="newG">${UI.ICON.plus} New Goal</button>
-        </div>
+          <button class="btn btn-primary" id="newG">${UI.ICON.plus} New goal</button>
+        </section>
 
         <div class="section-label">Areas of life</div>
         <div class="areas" id="areas">${areaCards}</div>
 
         ${pinned.length ? `
           <div class="section-label">Top priorities</div>
-          <div id="pinnedList">${pinned.map(goalCard).join('')}</div>` : ''}
+          <div class="glist" id="pinnedList">${pinned.map(goalCard).join('')}</div>` : ''}
 
         <div class="section-label">
           ${areaFilter ? `${esc(Store.area(areaFilter).name)} goals` : 'All goals'}
-          ${areaFilter ? ` · <button class="btn btn-ghost btn-sm" id="clearF">clear filter</button>` : ''}
+          ${areaFilter ? ` · <button class="btn btn-ghost btn-sm gclear" id="clearF">clear filter</button>` : ''}
         </div>
-        <div id="goalList">
+        <div class="glist" id="goalList">
           ${shown.length ? shown.map(goalCard).join('')
-            : `<div class="card empty">No goals here yet. Set one with <b>+ New Goal</b> —
+            : `<div class="card empty">No goals here yet. Set one with <b>+ New goal</b> —
                the arc runs to ${esc(a.end)}.</div>`}
         </div>`;
 
@@ -239,27 +245,37 @@
           if (!b) return;
           const id = b.closest('[data-goal]').dataset.goal;
           const g = Store.state.goals.find(x => x.id === id);
+          if (!g) return;
           if (b.dataset.act === 'edit') goalModal(g);
-          else if (b.dataset.act === 'pin') Store.commit(() => { g.pinned = !g.pinned; });
-          else if (b.dataset.act === 'ms') {
+          else if (b.dataset.act === 'pin') {
+            App.focusAfterRender(`#${scope.id} [data-goal="${id}"] [data-act="pin"]`);
+            Store.commit(() => { g.pinned = !g.pinned; });
+          } else if (b.dataset.act === 'ms') {
+            const before = g.status;
+            UI.haptic();
+            App.focusAfterRender(`#${scope.id} [data-goal="${id}"] [data-ms="${b.dataset.ms}"]`);
             Store.commit(() => {
               const mm = g.milestones.find(x => x.id === b.dataset.ms);
               mm.done = !mm.done;
               if (g.milestones.every(x => x.done)) g.status = 'achieved';
               else if (g.status === 'achieved') g.status = 'in-progress';
             });
+            celebrateIfNew(id, before);
           }
         });
         scope.addEventListener('change', e => {
           const inp = e.target.closest('[data-act="num"]');
           if (!inp) return;
           const id = inp.closest('[data-goal]').dataset.goal;
+          let before = null;
           Store.commit(s => {
             const g = s.goals.find(x => x.id === id);
+            before = g.status;
             g.current = Math.max(0, parseFloat(inp.value) || 0);
             if (g.current >= g.target) g.status = 'achieved';
             else if (g.status === 'achieved') g.status = 'in-progress';
           });
+          celebrateIfNew(id, before);
         });
       }
       wire(el.querySelector('#goalList'));

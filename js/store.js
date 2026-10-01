@@ -56,16 +56,16 @@
 
   /* ---------------- constants ---------------- */
   const AREAS = [
-    { id: 'health',    name: 'Health & Fitness',  icon: '💪' },
-    { id: 'career',    name: 'Career Growth',     icon: '📈' },
-    { id: 'finance',   name: 'Finances & Wealth', icon: '💰' },
-    { id: 'relations', name: 'Relationships',     icon: '🤝' },
-    { id: 'romance',   name: 'Romance & Love',    icon: '❤️' },
-    { id: 'spirit',    name: 'Spirituality',      icon: '✨' },
-    { id: 'home',      name: 'Home',              icon: '🏠' },
-    { id: 'travel',    name: 'Adventure & Travel',icon: '🧭' },
-    { id: 'fun',       name: 'Fun & Hobbies',     icon: '🎮' },
-    { id: 'community', name: 'Community',         icon: '🌍' }
+    { id: 'health',    emoji: 'health',     name: 'Health & Fitness',   icon: '💪' },
+    { id: 'career',    emoji: 'career',     name: 'Career Growth',      icon: '📈' },
+    { id: 'finance',   emoji: 'finance',    name: 'Finances & Wealth',  icon: '💰' },
+    { id: 'relations', emoji: 'relations',  name: 'Relationships',      icon: '🤝' },
+    { id: 'romance',   emoji: 'romance',    name: 'Romance & Love',     icon: '❤️' },
+    { id: 'spirit',    emoji: 'spirit',     name: 'Spirituality',       icon: '✨' },
+    { id: 'home',      emoji: 'home',       name: 'Home',               icon: '🏠' },
+    { id: 'travel',    emoji: 'travel',     name: 'Adventure & Travel', icon: '🧭' },
+    { id: 'fun',       emoji: 'fun',        name: 'Fun & Hobbies',      icon: '🎮' },
+    { id: 'community', emoji: 'community',  name: 'Community',          icon: '🌍' }
   ];
 
   // dark-stepped categorical slots — validated for the dark surface
