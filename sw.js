@@ -1,11 +1,14 @@
 /* Service worker — makes Winter Arc installable and usable offline.
    Bump CACHE when you change any shell file.                            */
-const CACHE = 'winter-arc-v8';
+const CACHE = 'winter-arc-v9';
 const SHELL = [
   './',
   'index.html',
   'css/style.css',
   'js/store.js',
+  'js/merge.js',
+  'js/sync-config.js',
+  'js/sync.js',
   'js/charts.js',
   'js/ui.js',
   'js/views/today.js',
@@ -64,6 +67,7 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  if (new URL(e.request.url).origin !== self.location.origin) return;  // never touch Supabase calls
   if (e.request.method !== 'GET') return;
   e.respondWith(
     caches.match(e.request).then(hit => {

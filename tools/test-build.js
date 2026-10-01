@@ -40,5 +40,15 @@ const files = d => fs.readdirSync(path.join(R, d)).map(f => d + '/' + f);
 // or a new worker can precache a stale index.html/app.js next to fresh files (mixed shell)
 assert.ok(/c\.add\(\s*new Request\([^)]*cache:\s*'reload'/.test(sw), 'install must precache with cache: reload');
 assert.ok(/fetch\(e\.request,\s*\{\s*cache:\s*'no-cache'\s*\}\)/.test(sw), 'stale-while-revalidate must use cache: no-cache');
+
+// cloud sync: the new shell files are precached, and Supabase (cross-origin) calls are never intercepted
+['js/merge.js', 'js/sync-config.js', 'js/sync.js'].forEach(f => assert.ok(shell.includes(f), 'not cached: ' + f));
+assert.ok(/new URL\(e\.request\.url\)\.origin\s*!==\s*self\.location\.origin/.test(sw), 'sw must not intercept cross-origin requests');
+assert.ok(sw.indexOf('.origin') < sw.indexOf('e.respondWith'), 'the cross-origin return must come before respondWith');
+
+// the single file carries the sync code and config, and still has no external references
+assert.ok(html.includes('window.SYNC_CONFIG'), 'sync-config not inlined');
+assert.ok(html.includes('root.Merge = ') && html.includes('root.SyncEngine = '), 'merge/sync not inlined');
+assert.ok(!/<script[^>]*\ssrc=/i.test(html), 'a script is still loaded from a file');
 console.log('sw cache modes ok');
 console.log('build ok');
