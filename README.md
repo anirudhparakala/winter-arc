@@ -2,8 +2,8 @@
 
 **🔗 Live app: [anirudhparakala.github.io/winter-arc](https://anirudhparakala.github.io/winter-arc/)**
 
-A black, offline-first tracker for a **one-year arc**: daily habits on a month grid,
-a weekly task board with a mindset tracker, 1-year goals across ten areas of life,
+A black, offline-first tracker for a **90-day arc**: daily habits on a month grid,
+a weekly task board with a mindset tracker, goals across ten areas of life,
 and an insights page that shows whether you're actually holding the line.
 
 No accounts, no sign-up, no server to run. Everything lives in your own browser.
@@ -75,7 +75,7 @@ rely on a link staying up.
 | **Today** | The daily check-in: today's completion as a big dot-matrix percentage, every habit, today's tasks, freeze tokens. |
 | **Habits** | The month matrix — one row per habit, one cell per day. The heart of the app. |
 | **Tasks** | A week at a time: tasks per day, plus Energy / Focus / Motivation tracking. |
-| **Goals** | Your 1-year goals, grouped by area of life, with milestones and days left. |
+| **Goals** | Your arc goals, grouped by area of life, with milestones and days left. |
 | **Insights** | Consistency over time, habit leaderboard, streaks, and a month-by-month bar. |
 
 Press **1–5** to jump between pages. Press **N** on Habits or Goals to add one.
@@ -103,7 +103,7 @@ ticked *today* yet never breaks a streak — only a missed past day does.
 ("read 24 books"). Checking off the last milestone, or reaching the number, marks
 the goal achieved on its own. Pin a goal to put it in **Top priorities**.
 
-**The arc** is your one-year window. Set its start date and length in Settings; every
+**The arc** is your window of days: 90 by default. Set its start date and length (in days) in Settings; every
 "days left" figure and the month-by-month chart follow from it.
 
 ---

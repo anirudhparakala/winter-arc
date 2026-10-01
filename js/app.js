@@ -100,8 +100,8 @@
       <div class="field-row">
         <label class="field"><span>Arc starts</span>
           <input class="input" type="date" id="sStart" value="${esc(s.arcStart)}"></label>
-        <label class="field"><span>Arc length (months)</span>
-          <input class="input" type="number" id="sMonths" min="1" max="60" value="${s.arcMonths}"></label>
+        <label class="field"><span>Arc length (days)</span>
+          <input class="input" type="number" id="sDays" min="1" max="3650" step="1" value="${s.arcDays}"></label>
       </div>
       <div class="field-row">
         <label class="field"><span>Week starts on</span>
@@ -138,7 +138,8 @@
         Store.commit(st => {
           st.settings.name = m.querySelector('#sName').value.trim() || 'Winter Arc';
           st.settings.arcStart = m.querySelector('#sStart').value || st.settings.arcStart;
-          st.settings.arcMonths = Math.max(1, parseInt(m.querySelector('#sMonths').value, 10) || 12);
+          const days = parseInt(m.querySelector('#sDays').value, 10);
+          st.settings.arcDays = Number.isInteger(days) && days >= 1 ? Math.min(3650, days) : 90;
           st.settings.weekStart = parseInt(m.querySelector('#sWeek').value, 10);
           st.settings.theme = m.querySelector('#sTheme').value;
         });

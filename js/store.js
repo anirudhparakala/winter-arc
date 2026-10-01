@@ -83,7 +83,7 @@
       settings: {
         name: 'Winter Arc',
         arcStart: start,
-        arcMonths: 12,          // 1-year arc
+        arcDays: 90,            // arc length in days (integer >= 1)
         weekStart: 0,           // 0 = Sunday
         theme: 'dark'
       },
@@ -128,6 +128,26 @@
     }
   }
 
+  const DEFAULT_ARC_DAYS = 90;
+  const validDays = n => Number.isInteger(n) && n >= 1;
+
+  /** Old saves stored the arc as `arcMonths`. Convert to the exact number of days that
+      month-based arc covered, drop the old field, and fall back to 90 for anything invalid. */
+  function migrateArcLength(out, raw) {
+    const st = out.settings;
+    if (!validDays(raw.arcDays)) {
+      let days = DEFAULT_ARC_DAYS;
+      if (validDays(raw.arcMonths)) {
+        const d = D.parse(st.arcStart);
+        const end = new Date(d.getFullYear(), d.getMonth() + raw.arcMonths, d.getDate());
+        const n = D.diff(st.arcStart, D.key(D.add(end, -1))) + 1;
+        if (validDays(n)) days = n;
+      }
+      st.arcDays = days;
+    }
+    delete st.arcMonths;
+  }
+
   function migrate(s) {
     const base = defaultState();
     const out = Object.assign({}, base, s);
@@ -137,6 +157,7 @@
     out.logs    = s.logs    || {};
     out.tasks   = s.tasks   || {};
     out.mindset = s.mindset || {};
+    migrateArcLength(out, s.settings || {});
     if (typeof out.freezeTokens !== 'number') out.freezeTokens = base.freezeTokens;
     out.habits.forEach(h => {
       if (!h.cadence) h.cadence = 'daily';
@@ -363,13 +384,12 @@
     return D.diff(D.todayKey(), g.deadline);
   }
 
-  /* ---------------- arc (the 1-year window) ---------------- */
+  /* ---------------- arc (the window every goal and rate lives in) ---------------- */
   function arc() {
     const st = state.settings.arcStart;
-    const d = D.parse(st);
-    const end = new Date(d.getFullYear(), d.getMonth() + state.settings.arcMonths, d.getDate());
-    const endK = D.key(D.add(end, -1));
-    const total = Math.max(1, D.diff(st, endK) + 1);
+    const days = validDays(state.settings.arcDays) ? state.settings.arcDays : DEFAULT_ARC_DAYS;
+    const endK = D.addKey(st, days - 1);
+    const total = days;
     const elapsed = Math.min(total, Math.max(0, D.diff(st, D.todayKey()) + 1));
     return { start: st, end: endK, total, elapsed,
              left: Math.max(0, total - elapsed),

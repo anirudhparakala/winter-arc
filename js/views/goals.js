@@ -1,5 +1,5 @@
 /* ============================================================
-   views/goals.js — the 1-year arc and the goals inside it
+   views/goals.js — the arc and the goals inside it
    ============================================================ */
 (function () {
   'use strict';
@@ -17,7 +17,7 @@
     const areaOpts = Store.AREAS.map(x =>
       `<option value="${x.id}"${x.id === g.area ? ' selected' : ''}>${x.icon} ${esc(x.name)}</option>`).join('');
 
-    UI.modal(existing ? 'Edit goal' : 'New 1-year goal', `
+    UI.modal(existing ? 'Edit goal' : 'New goal', `
       <label class="field"><span>Goal</span>
         <input class="input" id="gTitle" maxlength="90" value="${esc(g.title)}"
                placeholder="e.g. Get consistently fit"></label>

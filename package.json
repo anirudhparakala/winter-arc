@@ -1,7 +1,7 @@
 {
   "name": "winter-arc",
   "version": "1.0.0",
-  "description": "Track habits, tasks and 1-year goals through your winter arc.",
+  "description": "Track habits, tasks and goals through your winter arc.",
   "private": true,
   "scripts": {
     "start": "npx --yes http-server . -p 4173 -c-1 -o",

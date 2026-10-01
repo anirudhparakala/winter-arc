@@ -55,7 +55,7 @@
         <section class="hero">
           <div class="pct dotnum">${pct}<sup>%</sup></div>
           <div>
-            <div class="lb">${esc(D.longDate(d))} — day ${pad3(a.elapsed)} of ${a.total}</div>
+            <div class="lb">${esc(D.longDate(d))} — day ${pad3(a.elapsed)} of ${pad3(a.total)}</div>
             ${Charts.segments(tally.done, tally.total)}
             <div class="spec">
               <div><span class="lb">Done</span><b>${tally.done}/${tally.total}</b></div>

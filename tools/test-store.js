@@ -58,7 +58,7 @@ function dailyFixture(logEntries) {
   Object.assign(logs.h1, logEntries);
   return {
     version: 1,
-    settings: { name: 'T', arcStart: ago(30), arcMonths: 12, weekStart: 0, theme: 'dark' },
+    settings: { name: 'T', arcStart: ago(30), arcDays: 90, weekStart: 0, theme: 'dark' },
     freezeTokens: 3,
     habits: [{ id: 'h1', name: 'Gym', color: '#3987e5', cadence: 'daily',
                target: 1, archived: false, createdAt: ago(30) }],
@@ -182,32 +182,127 @@ test('toggling a frozen day clears it and refunds', () => {
   assert.strictEqual(Store.state.freezeTokens, 1);
 });
 
-console.log('\n1-year arc');
-test('a 12-month arc spans a full year', () => {
+console.log('\narc length');
+/** the pre-days formula: N calendar months from the start, minus a day, inclusive */
+function oldArcDays(startKey, months) {
+  const d = D.parse(startKey);
+  const end = new Date(d.getFullYear(), d.getMonth() + months, d.getDate());
+  return D.diff(startKey, D.key(D.add(end, -1))) + 1;
+}
+test('a fresh state is a 90-day arc', () => {
+  const { Store } = freshStore();
+  assert.strictEqual(Store.state.settings.arcDays, 90);
+  assert.strictEqual('arcMonths' in Store.state.settings, false);
+  assert.strictEqual(Store.arc().total, 90);
+});
+test('the arc ends on start + (arcDays - 1)', () => {
   const f = dailyFixture({});
   f.settings.arcStart = '2026-01-01';
-  f.settings.arcMonths = 12;
+  f.settings.arcDays = 90;
   const { Store } = freshStore(f);
   const a = Store.arc();
-  assert.strictEqual(a.start, '2026-01-01');
-  assert.strictEqual(a.end, '2026-12-31');
-  assert.strictEqual(a.total, 365);
+  assert.strictEqual(a.end, '2026-03-31');
+  assert.strictEqual(a.end, D.addKey('2026-01-01', 89));
+  assert.strictEqual(a.total, 90);
 });
-test('a leap-year arc spans 366 days', () => {
+test('arcDays of 365 spans the full year, 366 spans a leap year', () => {
   const f = dailyFixture({});
+  f.settings.arcStart = '2026-01-01';
+  f.settings.arcDays = 365;
+  assert.strictEqual(freshStore(f).Store.arc().end, '2026-12-31');
   f.settings.arcStart = '2028-01-01';
-  f.settings.arcMonths = 12;
-  const { Store } = freshStore(f);
-  assert.strictEqual(Store.arc().total, 366);
+  f.settings.arcDays = 366;
+  const a = freshStore(f).Store.arc();
+  assert.strictEqual(a.end, '2028-12-31');
+  assert.strictEqual(a.total, 366);
 });
-test('elapsed and remaining always add up to the total', () => {
+test('an invalid arcDays at runtime falls back to 90 days, never NaN', () => {
+  const f = dailyFixture({});
+  f.settings.arcDays = 90;
+  const { Store } = freshStore(f);
+  Store.state.settings.arcDays = 0;
+  assert.strictEqual(Store.arc().total, 90);
+  Store.state.settings.arcDays = 'x';
+  assert.strictEqual(Store.arc().total, 90);
+});
+test('elapsed and remaining add up to the total, 10 days into a 90-day arc', () => {
   const f = dailyFixture({});
   f.settings.arcStart = ago(10);
+  f.settings.arcDays = 90;
   const { Store } = freshStore(f);
   const a = Store.arc();
+  assert.strictEqual(a.total, 90);
   assert.strictEqual(a.elapsed, 11);                  // inclusive of today
+  assert.strictEqual(a.left, 79);
   assert.strictEqual(a.elapsed + a.left, a.total);
-  assert.ok(a.pct >= 0 && a.pct <= 100);
+  assert.strictEqual(a.pct, Math.round(11 / 90 * 100));
+});
+test('an arc that has not started yet has nothing elapsed', () => {
+  const f = dailyFixture({});
+  f.settings.arcStart = D.addKey(T, 5);
+  f.settings.arcDays = 90;
+  const a = freshStore(f).Store.arc();
+  assert.strictEqual(a.elapsed, 0);
+  assert.strictEqual(a.left, 90);
+});
+test('a finished arc caps at the total', () => {
+  const f = dailyFixture({});
+  f.settings.arcStart = ago(200);
+  f.settings.arcDays = 90;
+  const a = freshStore(f).Store.arc();
+  assert.strictEqual(a.elapsed, 90);
+  assert.strictEqual(a.left, 0);
+  assert.strictEqual(a.pct, 100);
+});
+
+console.log('\narc migration (months -> days)');
+function oldSave(startKey, months) {
+  const f = dailyFixture({});
+  f.settings.arcStart = startKey;
+  delete f.settings.arcDays;
+  if (months !== undefined) f.settings.arcMonths = months;
+  return f;
+}
+test('12 months from 2026-01-01 becomes 365 days, arcMonths removed', () => {
+  const { Store } = freshStore(oldSave('2026-01-01', 12));
+  assert.strictEqual(Store.state.settings.arcDays, 365);
+  assert.strictEqual('arcMonths' in Store.state.settings, false);
+  assert.strictEqual(Store.arc().end, '2026-12-31');
+});
+test('a month-end start keeps the old formula\'s day count', () => {
+  const want = oldArcDays('2026-01-31', 1);
+  assert.ok(want === 28 || want === 29 || want === 31, 'sanity: ' + want);
+  const { Store } = freshStore(oldSave('2026-01-31', 1));
+  assert.strictEqual(Store.state.settings.arcDays, want);
+  assert.strictEqual(Store.arc().total, want);
+});
+test('several month counts and start dates all match the old formula', () => {
+  [['2028-02-29', 12], ['2026-08-31', 6], ['2026-11-30', 3], ['2027-03-15', 24]].forEach(([st, m]) => {
+    const { Store } = freshStore(oldSave(st, m));
+    assert.strictEqual(Store.state.settings.arcDays, oldArcDays(st, m), st + ' x' + m);
+    assert.strictEqual('arcMonths' in Store.state.settings, false);
+  });
+});
+test('a save that already has arcDays is left alone', () => {
+  const f = oldSave('2026-01-01', 12);
+  f.settings.arcDays = 45;
+  const { Store } = freshStore(f);
+  assert.strictEqual(Store.state.settings.arcDays, 45);
+});
+test('a save with neither field, or a bad value, gets 90', () => {
+  assert.strictEqual(freshStore(oldSave('2026-01-01')).Store.state.settings.arcDays, 90);
+  assert.strictEqual(freshStore(oldSave('2026-01-01', 'abc')).Store.state.settings.arcDays, 90);
+  assert.strictEqual(freshStore(oldSave('2026-01-01', 0)).Store.state.settings.arcDays, 90);
+  const bad = oldSave('2026-01-01'); bad.settings.arcDays = -3;
+  assert.strictEqual(freshStore(bad).Store.state.settings.arcDays, 90);
+});
+test('importJSON migrates an old backup', () => {
+  const { Store } = freshStore();
+  Store.importJSON(JSON.stringify(oldSave('2026-01-01', 12)));
+  assert.strictEqual(Store.state.settings.arcDays, 365);
+  assert.strictEqual('arcMonths' in Store.state.settings, false);
+  assert.strictEqual(Store.arc().total, 365);
+  assert.strictEqual(JSON.parse(Store.exportJSON()).settings.arcDays, 365);
 });
 
 console.log('\ngoals');
