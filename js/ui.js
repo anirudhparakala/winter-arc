@@ -34,7 +34,8 @@
 
   /** onClose runs on cancel/Esc/backdrop as well as on close() after saving */
   function modal(heading, html, onMount, onClose) {
-    lastFocus = document.activeElement;
+    // a dialog opened over another (confirm) must hand focus back to the original opener
+    if (root.hidden) lastFocus = document.activeElement;
     onCloseHook = onClose || null;
     title.textContent = heading;
     body.innerHTML = html;
@@ -61,8 +62,10 @@
     if (e.key === 'Escape' && !root.hidden) close();
   });
 
-  /** simple yes/no */
+  /** simple yes/no. It replaces the open dialog, so it inherits that dialog's onClose
+      hook (e.g. Settings reverting a previewed theme when the confirm is cancelled). */
   function confirm(message, onYes, yesLabel) {
+    const parentHook = onCloseHook;
     modal('Confirm', `
       <p class="muted" style="margin:0 0 4px;line-height:1.55">${esc(message)}</p>
       <div class="modal-actions">
@@ -70,7 +73,7 @@
         <button class="btn btn-primary" id="cfYes">${esc(yesLabel || 'Yes')}</button>
       </div>`, el => {
       el.querySelector('#cfYes').onclick = () => { close(); onYes(); };
-    });
+    }, parentHook);
   }
 
   /* ---------------- toast ---------------- */

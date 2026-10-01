@@ -12,10 +12,12 @@
   let page = 'today';
   let lastPage = null;
   let pendingFocus = null;
+  let renderedDay = D.todayKey();   // the "today" the current view was drawn for
 
   /* ---------------- render ---------------- */
   function render() {
     const v = Views[page];
+    renderedDay = D.todayKey();
     // keep the reader where they were across a state commit (the window scrolls now)
     // (scroll positions belong to a page: arriving from another one starts clean)
     const same = page === lastPage;
@@ -59,8 +61,13 @@
   }
 
   /* ---------------- chrome ---------------- */
-  const tick = () => { clockEl.textContent = new Date().toTimeString().slice(0, 5); };
+  // an app resumed after midnight must not keep showing (and logging to) yesterday
+  const tick = () => {
+    clockEl.textContent = new Date().toTimeString().slice(0, 5);
+    if (D.todayKey() !== renderedDay) render();
+  };
   tick(); setInterval(tick, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
   nav.addEventListener('click', e => {
     const b = e.target.closest('[data-page]');

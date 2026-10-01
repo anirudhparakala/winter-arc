@@ -156,6 +156,29 @@ assert.ok(!UI.streakChip(2).includes('is-hot'));
   assert.notStrictEqual(h.document.activeElement, hidden, 'detached previous element: hidden input is blurred');
 }
 
+/* ---------- confirm() keeps the onClose hook of the dialog it replaces ---------- */
+{
+  const k = loadUI({ getItem: () => null, setItem() {} });
+  const yes = stubEl();
+  k.__els.modalBody.querySelector = () => yes;
+  const U = k.window.UI;
+  let closed = 0, ran = 0;
+  U.modal('Settings', '<p>', null, () => closed++);
+  U.confirm('Erase?', () => ran++, 'Erase');
+  U.close();                                   // Cancel / Esc / backdrop on the confirm
+  assert.strictEqual(closed, 1, 'cancelling the confirm still runs the settings onClose (theme revert)');
+  assert.strictEqual(ran, 0);
+  U.modal('Settings', '<p>', null, () => closed++);
+  U.confirm('Erase?', () => ran++, 'Erase');
+  yes.onclick();                               // Yes
+  assert.strictEqual(ran, 1);
+  assert.strictEqual(closed, 2, 'the hook runs exactly once on the Yes path');
+  U.modal('Plain', '<p>');
+  U.confirm('Fine?', () => {});
+  U.close();
+  assert.strictEqual(closed, 2, 'no stale hook leaks into later dialogs');
+}
+
 /* ---------- modal(): no auto-focus of the first input on coarse pointers ---------- */
 {
   function modalRun(media) {
