@@ -41,6 +41,7 @@
   --g2:          #555555;   /* non-essential labels only */
   --accent:      #8ecbff;   /* lit states only */
   --accent-glow: rgba(142, 203, 255, .5);
+  --on-accent:   #000000;   /* text/ink drawn on an accent fill */
   --led-off:     #1a1a1a;
   --grid:        #161616;   /* dot-grid backdrop */
   --snap:        cubic-bezier(.4, 0, 1, 1);
@@ -51,31 +52,13 @@
   --m-focus:     #8ecbff;
   --m-motivation:#7fe0b0;
 
+  /* status text: warning (amber) and danger (red); both re-tuned for the light panel */
+  --warn:        #ffb86b;
+  --danger:      #ff6b6b;
+
   --f-dot:  "Doto", monospace;
   --f-ui:   "Space Grotesk", system-ui, sans-serif;
   --f-mono: "Space Mono", ui-monospace, monospace;
-
-  /* legacy aliases — removed when Tasks 4-8 finish */
-  --surface-0:     var(--bg);
-  --surface-1:     var(--panel);
-  --surface-2:     #101010;
-  --surface-3:     var(--rule);
-  --border:        var(--rule-2);
-  --border-soft:   var(--rule);
-  --text-primary:  var(--text);
-  --text-secondary:var(--g1);
-  --text-muted:    var(--g2);
-  --accent-dim:    #5b93c4;
-  --accent-ghost:  rgba(142, 203, 255, .14);
-  --flame:         #f97316;
-  --freeze:        #38bdf8;
-  --series-1: #3987e5;  --series-2: #d95926;  --series-3: #199e70;
-  --series-4: #c98500;  --series-5: #d55181;  --series-6: #008300;
-  --series-7: #9085e9;  --series-8: #e66767;
-  --good: #0ca30c;  --warning: #fab219;  --serious: #ec835a;  --critical: #d03b3b;
-  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 22px;
-  --sans: var(--f-ui);
-  --mono: var(--f-mono);
 }
 
 :root[data-theme="light"] {
@@ -86,23 +69,17 @@
   --text:        #0a0a0a;
   --g1:          #5c5c5c;
   --g2:          #8a8a8a;
-  --accent:      #1f7fd1;
-  --accent-glow: rgba(31, 127, 209, .35);
+  --accent:      #1668b0;   /* >= 4.5:1 on the light panel for 11px accent text */
+  --accent-glow: rgba(22, 104, 176, .35);
+  --on-accent:   #ffffff;
   --led-off:     #e8e8e8;
   --grid:        #e6e6e6;
   color-scheme:  light;
   --m-energy:    #c2540a;
   --m-focus:     #1f6fb5;
   --m-motivation:#0f8a5a;
-
-  /* legacy aliases (light) */
-  --surface-2:     #ffffff;
-  --surface-3:     #ececec;
-  --accent-dim:    #17609f;
-  --accent-ghost:  rgba(31, 127, 209, .12);
-  --series-1: #2a78d6;  --series-2: #eb6834;  --series-3: #1baf7a;
-  --series-4: #eda100;  --series-5: #e87ba4;  --series-6: #008300;
-  --series-7: #4a3aa7;  --series-8: #e34948;
+  --warn:        #a85a00;
+  --danger:      #c62828;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -156,7 +133,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 .nav-btn:last-child { border-right: 0; }
 .nav-btn:hover { color: var(--text); }
 .nav-btn:active { transform: translateY(1px); }
-.nav-btn i { font-style: normal; color: var(--g2); margin-right: 6px; }
+.nav-btn i { font-style: normal; color: var(--g1); margin-right: 6px; }
 .nav-btn.is-active { background: var(--text); color: var(--bg); }
 .nav-btn.is-active i { color: var(--bg); }
 
@@ -184,8 +161,9 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
                   calc(84px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   .strip { display: flex; justify-content: space-between; }
   .clock { display: none; }
-  .icon-btn { width: 44px; height: 44px; }
-  .icon-btn.sm { width: 44px; height: 44px; }
+  /* phone hit areas: every shared control is >= 44px tall */
+  .icon-btn, .icon-btn.sm { width: 44px; height: 44px; }
+  .btn, .btn-sm, .seg button { min-height: 44px; }
   .nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
     background: var(--bg); border-width: 1px 0 0;
@@ -193,7 +171,7 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
   }
   .nav-btn {
     flex: 1; flex-direction: column; justify-content: center; min-height: 56px;
-    padding: 10px 0; font-size: 10px;
+    padding: 10px 0;
   }
   .nav-btn i { display: block; margin: 0 0 4px; }
 }
@@ -210,13 +188,10 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 }
 .card-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g2); }
 .row { display: flex; align-items: center; gap: 10px; }
-.between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--g1); }
-.dim { color: var(--g2); }
-.center { text-align: center; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.empty { padding: 26px; text-align: center; color: var(--g2); font: 11px var(--f-mono);
+.empty { padding: 26px; text-align: center; color: var(--g1); font: 11px var(--f-mono);
          letter-spacing: .12em; text-transform: uppercase; }
 .section-label { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase;
                  color: var(--g2); margin: 24px 0 10px; }
@@ -232,18 +207,18 @@ button:active { transform: translateY(1px); }
   white-space: nowrap; transition: transform .1s var(--snap), background .1s var(--snap), color .1s var(--snap);
 }
 .btn:hover { background: var(--rule); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
 .btn-primary:hover { background: var(--accent); filter: brightness(1.12); }
 .btn-ghost { border-color: transparent; color: var(--g1); }
 .btn-ghost:hover { color: var(--text); background: transparent; border-color: var(--rule-2); }
-.btn-danger { color: #ff6b6b; border-color: transparent; background: transparent; }
-.btn-danger:hover { background: transparent; border-color: #ff6b6b; }
-.btn-sm { padding: 6px 11px; font-size: 10.5px; }
+.btn-danger { color: var(--danger); border-color: transparent; background: transparent; }
+.btn-danger:hover { background: transparent; border-color: var(--danger); }
+.btn-sm { padding: 6px 11px; }
 
 .input, .select, .textarea {
   width: 100%; padding: 10px 12px; border-radius: 0;
   background: var(--bg); border: 1px solid var(--rule-2);
-  color: var(--text); outline: none; transition: border-color .1s var(--snap);
+  color: var(--text); transition: border-color .1s var(--snap);
 }
 .input:focus, .select:focus, .textarea:focus { border-color: var(--accent); }
 .input::placeholder, .textarea::placeholder { color: var(--g2); }
@@ -264,8 +239,6 @@ button:active { transform: translateY(1px); }
   background: transparent; border: 1px solid var(--rule-2); color: var(--g1);
 }
 .pill-accent { border-color: var(--accent); color: var(--accent); }
-.pill-good   { border-color: var(--good); color: var(--good); }
-.pill-warn   { border-color: var(--warning); color: var(--warning); }
 
 /* hardware toggle */
 .seg { display: flex; border: 1px solid var(--rule-2); background: transparent; }
@@ -278,19 +251,19 @@ button:active { transform: translateY(1px); }
 .seg button:last-child { border-right: 0; }
 .seg button:hover { color: var(--text); }
 .seg button.is-active { background: var(--text); color: var(--bg); }
-.seg.seg-sm button { padding: 5px 10px; font-size: 10px; }
+.seg.seg-sm button { padding: 5px 10px; }
 
 /* LED checkbox */
 .check {
   position: relative; width: 18px; height: 18px; flex: none; padding: 0; border-radius: 0; cursor: pointer;
-  background: transparent; border: 1px solid var(--g2);
+  background: transparent; border: 1px solid var(--g1);
   display: grid; place-items: center; color: transparent;
   transition: background .1s var(--snap), box-shadow .1s var(--snap), border-color .1s var(--snap);
 }
-.check:hover { border-color: var(--g1); }
+.check:hover { border-color: var(--text); }
 .check .ico { display: none; }
 .check.is-done { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
-.check.is-done::after { content: ""; width: 6px; height: 6px; background: #000; }
+.check.is-done::after { content: ""; width: 6px; height: 6px; background: var(--on-accent); }
 .check.is-freeze { background: transparent; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* segmented progress bar */
@@ -316,11 +289,6 @@ button:active { transform: translateY(1px); }
 }
 
 /* ---------- TODAY ---------- */
-/* hero-ring / hero-val are shared (Charts.ring) — not Today's own */
-.hero-ring { position: relative; display: grid; place-items: center; }
-.hero-ring .hero-val { position: absolute; text-align: center; }
-.hero-val b { display: block; font-size: 40px; font-weight: 750; letter-spacing: -.02em; }
-.hero-val span { font-size: 10px; letter-spacing: .18em; color: var(--text-muted); font-weight: 600; }
 .streak { display: inline-flex; align-items: center; gap: 6px; font: 700 15px var(--f-mono);
           color: var(--g1); font-variant-numeric: tabular-nums; }
 .streak.is-hot { color: var(--text); }
@@ -339,7 +307,7 @@ button:active { transform: translateY(1px); }
 
 .tgrid { display: grid; grid-template-columns: 1fr 1.35fr; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
 .tgrid > .mod { min-width: 0; }
-.mh .hint { text-align: right; }
+.mh .hint { text-align: right; color: var(--g1); }
 
 .hrow {
   display: flex; align-items: center; gap: 12px; min-height: 52px;
@@ -362,9 +330,9 @@ button:active { transform: translateY(1px); }
         border: 0; border-radius: 0; background: transparent; color: var(--g1); cursor: pointer; }
 .tdel:hover { color: var(--text); }
 .tadd { width: 100%; margin-top: 4px; padding: 12px 0; border: 0; border-top: 1px solid var(--rule);
-        border-radius: 0; background: transparent; color: var(--text); outline: none;
+        border-radius: 0; background: transparent; color: var(--text);
         font: 12px var(--f-mono); letter-spacing: .06em; }
-.tadd::placeholder { color: var(--g2); }
+.tadd::placeholder { color: var(--g1); }
 .tadd:focus { border-top-color: var(--accent); }
 
 @media (max-width: 760px) {
@@ -382,7 +350,6 @@ button:active { transform: translateY(1px); }
 .hstack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; margin-top: 8px;
           background: var(--rule); border: 1px solid var(--rule); }
 .hstack > .mod { min-width: 0; }
-.hstack .empty { color: var(--g1); }
 
 .hhead { display: grid; gap: 14px; }
 .hh-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -414,7 +381,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
 .hgrid .d-head, .hgrid .d-cell { width: 26px; min-width: 26px; text-align: center; }
 .hgrid .d-head { font: 11px var(--f-mono); color: var(--g1); font-variant-numeric: tabular-nums; }
-.hgrid .d-head.is-weekend { box-shadow: inset 0 -2px 0 var(--rule-2); }
+.hgrid .d-head.is-weekend { color: var(--text); box-shadow: inset 0 -2px 0 var(--rule-2); }
 .hgrid .d-head.is-today { color: var(--accent); }
 
 .hspark svg { display: block; height: 36px; }
@@ -461,8 +428,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
 @media (max-width: 760px) {
   .hmonth { font-size: 18px; }
-  .hctl .seg button { min-height: 44px; }
-  .hctl .btn { flex: 1 1 100%; min-height: 44px; }
+  .hctl .btn { flex: 1 1 100%; }
   .hmatrix .mh, .hleg, .hnote { padding-left: 12px; padding-right: 12px; }
   .hgrid .col-habit { width: 104px; min-width: 104px; max-width: 104px; padding: 0 8px 0 12px; }
   .hname b { font-size: 12px; }
@@ -507,15 +473,15 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 .dpct { font-size: 24px; line-height: 1; }
 .dsec { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
-.drow { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-top: 1px solid var(--rule); }
+.drow { display: flex; align-items: flex-start; gap: 6px; padding: 7px 0; border-top: 1px solid var(--rule); }
 .drow .check { margin-top: 1px; }
 .dtext { flex: 1; min-width: 0; font-size: 13px; line-height: 1.35; word-break: break-word; }
 .drow.is-done .dtext { text-decoration: line-through; color: var(--g1); }
-.ddel { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0;
+.ddel { display: inline-grid; place-items: center; flex: none; width: 20px; height: 24px; padding: 0;
         border: 0; border-radius: 0; background: transparent; color: var(--g1); cursor: pointer; }
 .ddel:hover { color: var(--text); }
 .dadd { width: 100%; padding: 9px 0; border: 0; border-top: 1px solid var(--rule); border-radius: 0;
-        background: transparent; color: var(--text); outline: none; font: 12px var(--f-mono); letter-spacing: .04em; }
+        background: transparent; color: var(--text); font: 12px var(--f-mono); letter-spacing: .04em; }
 .dadd::placeholder { color: var(--g1); }
 .dadd:focus { border-top-color: var(--accent); }
 .dcopy { justify-content: flex-start; white-space: normal; text-align: left; }
@@ -540,7 +506,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 }
 
 @media (max-width: 760px) {
-  .wnav .btn { flex: 1; min-height: 44px; }
+  .wnav .btn { flex: 1; }
   .wtotal b { font-size: 44px; }
   .wcols { height: 132px; }
 
@@ -554,9 +520,12 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   .ddel { width: 44px; height: 44px; margin-right: -10px; }
   .dtext { font-size: 14px; }
   .dadd { font-size: 16px; min-height: 48px; }
-  .dcopy { min-height: 44px; }
   .mseg button { height: 44px; }
   .mseg button::after { inset: 13px 1px; }
+}
+/* 10 mindset blocks must stay >= 26px wide: 90vw cards with slimmer padding down to 320px */
+@media (max-width: 360px) {
+  .day-card { flex-basis: 90vw; padding: 14px 10px; }
 }
 
 /* ---------- GOALS ---------- */
@@ -585,7 +554,6 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 @keyframes awig { 25% { transform: rotate(-10deg) scale(1.12); } 75% { transform: rotate(10deg) scale(1.12); } }
 
 .glist { display: grid; gap: 8px; }
-.glist .empty { color: var(--g1); }
 .goal-card { display: grid; gap: 14px; padding: 18px; background: var(--panel); border: 1px solid var(--rule); }
 .goal-card.is-done { border-color: var(--rule-2); }
 .gtop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -593,8 +561,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 .goal-card.is-done .goal-title { text-decoration: line-through; color: var(--g1); }
 .goal-card .gtags { margin-top: 10px; }
 .goal-card .pill.is-prog { color: var(--text); }
-.goal-card .pill.is-over { border-color: #ffb86b; color: #ffb86b; }
-:root[data-theme="light"] .goal-card .pill.is-over { border-color: #a85a00; color: #a85a00; }
+.goal-card .pill.is-over { border-color: var(--warn); color: var(--warn); }
 .gact { display: flex; gap: 8px; flex: none; }
 .pin.is-on { color: var(--accent); border-color: var(--accent); }
 .gmeta { display: flex; align-items: center; gap: 10px; font: 11px var(--f-mono);
@@ -610,13 +577,12 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 @media (max-width: 760px) {
   .goal-hero { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .gh-num { font-size: 56px; }
-  .goal-hero .btn { min-height: 44px; }
   .areas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .area-card { min-height: 104px; padding: 14px 12px; }
-  .section-label .gclear { min-height: 44px; margin: -12px 0; }
+  .section-label .gclear { margin: -12px 0; }
   .goal-card { padding: 16px 14px; }
   .gact { gap: 4px; margin: -8px -8px 0 0; }
-  .gmeta .gnum { min-height: 44px; font-size: 16px; }
+  .gmeta .gnum { width: 120px; min-height: 44px; font-size: 16px; }
   .ms-item { min-height: 48px; }
   .ms-item .check::before { content: ""; position: absolute; inset: -14px; }
 }
@@ -634,8 +600,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 .ihead .lb { min-width: 0; padding-bottom: 4px; color: var(--g1); }
 .inote { margin: 10px 0 0; color: var(--g1); font: 11px/1.7 var(--f-mono); letter-spacing: .06em; }
 .istack .spec b.is-up { color: var(--accent); }
-.istack .spec b.is-down { color: #ff6b6b; }
-:root[data-theme="light"] .istack .spec b.is-down { color: #c62828; }
+.istack .spec b.is-down { color: var(--danger); }
 .ibest { display: flex; align-items: center; gap: 8px; }
 .ibest small { font: 11px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--g1); }
 .istack .spec b.isml { font: 500 18px/30px var(--f-ui); }
@@ -664,7 +629,6 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   .ihead { margin-top: 14px; }
   .ictl { width: 100%; }
   .ictl .select { flex: 1 1 100%; min-width: 0; max-width: none; min-height: 44px; font-size: 16px; }
-  #lbSeg button { min-height: 44px; }
 }
 
 /* ---------- charts ---------- */
@@ -720,8 +684,14 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   .modal-root { align-items: end; padding: 0; }
   .modal {
     width: 100%; max-height: 90vh; border-width: 1px 0 0;
-    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    padding: 20px 16px 0;
     animation: sheet .18s var(--snap);
+  }
+  /* the sheet scrolls on a short phone: keep Save / Cancel reachable */
+  .modal-actions {
+    position: sticky; bottom: 0; margin: 20px -16px 0;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+    background: var(--bg); border-top: 1px solid var(--rule);
   }
   .toast { bottom: calc(72px + env(safe-area-inset-bottom)); max-width: calc(100% - 32px); }
   .input, .select, .textarea { font-size: 16px; }
@@ -729,7 +699,6 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 560px) {
-  .hero-val b { font-size: 32px; }
   .field-row { grid-template-columns: 1fr; }
 }
 
@@ -746,11 +715,11 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 <header class="strip">
   <span class="logo dotnum">WINTER ARC</span>
   <nav class="nav" id="nav" aria-label="Pages">
-    <button class="nav-btn is-active" data-page="today"><i>1</i><span>Today</span></button>
-    <button class="nav-btn" data-page="habits"><i>2</i><span>Habits</span></button>
-    <button class="nav-btn" data-page="tasks"><i>3</i><span>Tasks</span></button>
-    <button class="nav-btn" data-page="goals"><i>4</i><span>Goals</span></button>
-    <button class="nav-btn" data-page="insights"><i>5</i><span>Insights</span></button>
+    <button class="nav-btn is-active" data-page="today"><i aria-hidden="true">1</i><span>Today</span></button>
+    <button class="nav-btn" data-page="habits"><i aria-hidden="true">2</i><span>Habits</span></button>
+    <button class="nav-btn" data-page="tasks"><i aria-hidden="true">3</i><span>Tasks</span></button>
+    <button class="nav-btn" data-page="goals"><i aria-hidden="true">4</i><span>Goals</span></button>
+    <button class="nav-btn" data-page="insights"><i aria-hidden="true">5</i><span>Insights</span></button>
   </nav>
   <div class="strip-r"><span class="clock dotnum" id="clock" aria-hidden="true"></span>
     <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
@@ -770,7 +739,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         <svg viewBox="0 0 24 24" class="ico"><path d="m6 6 12 12M18 6 6 18"/></svg>
       </button>
     </div>
-    <div class="modal-body" id="modalBody"></div>
+    <div id="modalBody"></div>
   </div>
 </div>
 
@@ -1210,32 +1179,6 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 
-  /* ---------- progress ring (hero number — no tooltip needed) ---------- */
-  function ring(pct, opt) {
-    const o = Object.assign({ size: 150, stroke: 8, color: null, label: '', sub: '' }, opt);
-    const p = clamp(pct || 0, 0, 100);
-    const r = (o.size - o.stroke) / 2;
-    const c = 2 * Math.PI * r;
-    const col = o.color || 'var(--accent)';
-    return `
-      <div class="hero-ring" style="width:${o.size}px;height:${o.size}px">
-        <svg width="${o.size}" height="${o.size}" viewBox="0 0 ${o.size} ${o.size}"
-             role="img" aria-label="${esc(o.label || p + '%')} ${p} percent">
-          <circle cx="${o.size/2}" cy="${o.size/2}" r="${r}" fill="none"
-                  stroke="var(--rule-2)" stroke-width="${o.stroke}"/>
-          <circle cx="${o.size/2}" cy="${o.size/2}" r="${r}" fill="none"
-                  stroke="${col}" stroke-width="${o.stroke}" stroke-linecap="butt"
-                  stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}"
-                  transform="rotate(-90 ${o.size/2} ${o.size/2})"
-                  style="transition:stroke-dashoffset .3s var(--snap)"/>
-        </svg>
-        <div class="hero-val">
-          <b style="font-family:var(--f-dot);font-weight:900;font-size:${Math.round(o.size * .26)}px">${p}%</b>
-          ${o.sub ? `<span>${esc(o.sub)}</span>` : ''}
-        </div>
-      </div>`;
-  }
-
   /* ---------- segmented bar (one block per step; lit = done) ---------- */
   function segments(done, total, opt) {
     const max = Math.max(1, (opt && opt.max) || 31);
@@ -1314,7 +1257,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       const step = Math.max(1, Math.ceil(n / (W < 500 ? 4 : 6)));
       let xlab = '';
       for (let i = 0; i < n; i += step) {
-        const anchor = i === 0 ? 'start' : (i > n - step ? 'end' : 'middle');
+        const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
         xlab += `<text class="axis-lbl" x="${X(i).toFixed(1)}" y="${H - 6}"
                   text-anchor="${anchor}">${esc(c.labels[i] || '')}</text>`;
       }
@@ -1423,7 +1366,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       </span>`).join('')}</div>`;
   }
 
-  window.Charts = { ring, segments, spark, lines, legend, mount, esc };
+  window.Charts = { segments, spark, lines, legend, mount, esc };
 })();
 
 </script>
@@ -1848,7 +1791,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     const list = Store.tasksOf(key);
     box.innerHTML = `
       <div class="mh"><span class="lb">02 / Today's tasks</span>
-        <span class="lb tcount">${list.filter(t => t.done).length}/${list.length}</span></div>
+        <span class="lb">${list.filter(t => t.done).length}/${list.length}</span></div>
       <div id="taskList">
         ${list.map(t => `
           <div class="trow${t.done ? ' is-done' : ''}" data-task="${esc(t.id)}">
@@ -1870,8 +1813,8 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
     const inp = box.querySelector('#addT');
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter' && inp.value.trim()) {
+        App.focusAfterRender('#todayTasks #addT');   // queued before the commit: it re-renders synchronously
         Store.addTask(key, inp.value);
-        App.focusAfterRender('#todayTasks #addT');
       }
     });
   }
@@ -1927,7 +1870,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       const cad = m.querySelector('#hCad');
       const tgt = m.querySelector('#tgtWrap');
       cad.value = h.cadence;
-      const sync = () => { tgt.style.visibility = cad.value === 'daily' ? 'hidden' : 'visible'; };
+      const sync = () => { tgt.hidden = cad.value === 'daily'; };
       cad.onchange = sync; sync();
 
       m.querySelector('#hSave').onclick = () => {
@@ -2056,7 +1999,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
                   <span>Avg <b>${avg}%</b></span>
                 </div>
               </div>
-              <div class="row hnav">
+              <div class="row">
                 <button class="icon-btn" id="prevM" aria-label="Previous month">${UI.ICON.left}</button>
                 <button class="icon-btn" id="nextM" aria-label="Next month">${UI.ICON.right}</button>
               </div>
@@ -2079,7 +2022,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
             <div class="grid-wrap scroll-x">
               <table class="hgrid">
                 <thead>
-                  <tr class="trend-row">
+                  <tr>
                     <th class="col-habit"><span class="hlab">Trend</span></th>
                     <th colspan="${nDays}" class="trend-cell">
                       <div class="hspark" style="width:${sparkPct}%;padding:0 ${sparkPad}%"
@@ -2098,7 +2041,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
             <div class="hleg">
               <span><i class="on"></i>Done</span>
               <span><i class="frz"></i>Frozen</span>
-              <span><i class="off"></i>Missed</span>
+              <span><i></i>Missed</span>
               <span><i class="now"></i>Today</span>
             </div>
             <p class="hnote">Tap a dot to log · hold (or right-click) to freeze ·
@@ -2241,7 +2184,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
         <div class="dsec"><span class="lb">Tasks</span>
           <span class="lb">${done}/${list.length}</span></div>
-        <div class="dlist">
+        <div>
           ${list.map(t => `
             <div class="drow${t.done ? ' is-done' : ''}" data-task="${esc(t.id)}">
               <button class="check${t.done ? ' is-done' : ''}" data-act="t"
@@ -2258,7 +2201,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
         <div class="dmind">
           <div class="dsec"><span class="lb">Mindset</span></div>
           ${MIND.map(mm => `
-            <div class="mrow">
+            <div>
               <div class="mtop">
                 <span class="mlab"><i style="background:${esc(mm.color)}"></i>${esc(mm.label)}</span>
                 <b class="mval">${mind[mm.key] || 0}</b>
@@ -2346,7 +2289,11 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
       el.querySelector('#prevW').onclick = () => { weekCursor = D.add(start, -7); App.render(); };
       el.querySelector('#nextW').onclick = () => { weekCursor = D.add(start, 7);  App.render(); };
-      el.querySelector('#thisW').onclick = () => { weekCursor = weekStartOf(D.today()); App.render(); };
+      el.querySelector('#thisW').onclick = () => {
+        weekCursor = weekStartOf(D.today());
+        scrolledFor = null;            // re-centre the carousel on today even if this week is already shown
+        App.render();
+      };
       if (isThisWeek) el.querySelector('#thisW').classList.add('btn-primary');
 
       const board = el.querySelector('#board');
@@ -2655,14 +2602,15 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
           if (!g) return;
           if (b.dataset.act === 'edit') goalModal(g);
           else if (b.dataset.act === 'pin') {
-            App.focusAfterRender(`#${scope.id} [data-goal="${id}"] [data-act="pin"]`);
+            App.focusAfterRender(`#${scope.id} [data-goal="${CSS.escape(id)}"] [data-act="pin"]`);
             Store.commit(() => { g.pinned = !g.pinned; });
           } else if (b.dataset.act === 'ms') {
             const before = g.status;
             UI.haptic();
-            App.focusAfterRender(`#${scope.id} [data-goal="${id}"] [data-ms="${b.dataset.ms}"]`);
+            App.focusAfterRender(`#${scope.id} [data-goal="${CSS.escape(id)}"] [data-ms="${CSS.escape(b.dataset.ms)}"]`);
             Store.commit(() => {
               const mm = g.milestones.find(x => x.id === b.dataset.ms);
+              if (!mm) return;
               mm.done = !mm.done;
               if (g.milestones.every(x => x.done)) g.status = 'achieved';
               else if (g.status === 'achieved') g.status = 'in-progress';
@@ -2760,10 +2708,10 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   Views.insights = {
     title: 'INSIGHTS',
     render(el) {
-      // a deleted habit can't stay selected
-      const scopeHabit = Store.state.habits.find(h => h.id === scope);
-      if (!scopeHabit) scope = 'overall';
+      // the select only lists active habits: a deleted or archived one falls back to Overall
       const habits = Store.activeHabits();
+      const scopeHabit = habits.find(h => h.id === scope);
+      if (!scopeHabit) scope = 'overall';
       const keys = rangeKeys();
       const raw = keys.map(scoreOn);
       const vals = scope === 'overall' ? raw.map(v => v == null ? 0 : v) : smooth(raw, 7);
@@ -2812,7 +2760,7 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
 
       // 10 blocks per month, lit bottom-up by rounded tenths, same build as Tasks' week columns
       const monthCols = months.map(mo => {
-        const lit = mo.score == null ? 0 : Math.round(mo.score / 10);
+        const lit = mo.score == null ? 0 : mo.score > 0 ? Math.max(1, Math.round(mo.score / 10)) : 0;   // any activity lights a block
         let blocks = '';
         for (let b = 0; b < 10; b++) blocks += b < lit ? '<i class="on"></i>' : '<i></i>';
         const text = `${mo.label} ${mo.year}: ${mo.score == null ? 'not started' : mo.score + '%'}`;
@@ -2939,9 +2887,11 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
   function render() {
     const v = Views[page];
     // keep the reader where they were across a state commit (the window scrolls now)
-    const top = window.scrollY;
+    // (scroll positions belong to a page: arriving from another one starts clean)
+    const same = page === lastPage;
+    const top = same ? window.scrollY : 0;
     const sx = view.querySelector('.scroll-x');
-    const left = sx ? sx.scrollLeft : 0;
+    const left = same && sx ? sx.scrollLeft : 0;
 
     document.title = v.title.charAt(0) + v.title.slice(1).toLowerCase() + ' · Winter Arc';
     view.innerHTML = '';
@@ -2963,7 +2913,8 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
       b.classList.toggle('is-active', b.dataset.page === page));
 
     if (pendingFocus) {
-      const t = view.querySelector(pendingFocus);
+      let t = null;
+      try { t = view.querySelector(pendingFocus); } catch (e) { /* a stale selector must not break the render */ }
       pendingFocus = null;
       if (t) { t.focus(); if (t.setSelectionRange) t.setSelectionRange(99, 99); }
     }
@@ -3034,10 +2985,10 @@ table.hgrid th, table.hgrid td { padding: 0; font-weight: 400; }
             <option value="light"${s.theme === 'light' ? ' selected' : ''}>Light</option>
           </select></label>
       </div>
-      <p class="dim" style="font-size:12px;margin:0 0 16px;line-height:1.55">
+      <p class="muted" style="font-size:12px;margin:0 0 16px;line-height:1.55">
         Current arc: <b>${esc(a.start)}</b> → <b>${esc(a.end)}</b> · ${a.total} days ·
         ${a.left} left.${Store.memoryOnly
-          ? '<br><b style="color:var(--warning)">This browser is blocking local storage — export a backup before you close the tab.</b>'
+          ? '<br><b style="color:var(--warn)">This browser is blocking local storage — export a backup before you close the tab.</b>'
           : '<br>Everything is saved in this browser only. Export a backup to move it to another device.'}
       </p>
 
