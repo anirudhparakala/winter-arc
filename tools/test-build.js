@@ -35,4 +35,10 @@ shell.filter(s => s !== './').forEach(s => assert.ok(fs.existsSync(path.join(R, 
 const files = d => fs.readdirSync(path.join(R, d)).map(f => d + '/' + f);
 [...files('assets/fonts'), ...files('assets/emoji')].forEach(f => assert.ok(shell.includes(f), 'not cached: ' + f));
 
+
+// GitHub Pages sends max-age=600: install and revalidation must bypass the HTTP cache,
+// or a new worker can precache a stale index.html/app.js next to fresh files (mixed shell)
+assert.ok(/c\.add\(\s*new Request\([^)]*cache:\s*'reload'/.test(sw), 'install must precache with cache: reload');
+assert.ok(/fetch\(e\.request,\s*\{\s*cache:\s*'no-cache'\s*\}\)/.test(sw), 'stale-while-revalidate must use cache: no-cache');
+console.log('sw cache modes ok');
 console.log('build ok');

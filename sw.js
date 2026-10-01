@@ -1,6 +1,6 @@
 /* Service worker — makes Winter Arc installable and usable offline.
    Bump CACHE when you change any shell file.                            */
-const CACHE = 'winter-arc-v7';
+const CACHE = 'winter-arc-v8';
 const SHELL = [
   './',
   'index.html',
@@ -47,8 +47,10 @@ const SHELL = [
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE)
-      // addAll fails the whole install if one file 404s — add them individually
-      .then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {}))))
+      // addAll fails the whole install if one file 404s — add them individually.
+      // cache:'reload' skips the HTTP cache (GitHub Pages: max-age=600) so the new worker
+      // can never precache an old index.html/js beside new files (a mixed shell throws on boot)
+      .then(c => Promise.all(SHELL.map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => {}))))
       .then(() => self.skipWaiting())
   );
 });
@@ -67,7 +69,8 @@ self.addEventListener('fetch', e => {
     caches.match(e.request).then(hit => {
       if (hit) {
         // refresh the cache in the background so updates land on next launch
-        fetch(e.request).then(res => {
+        // no-cache = always revalidate with the server, not the 10-minute HTTP cache
+        fetch(e.request, { cache: 'no-cache' }).then(res => {
           if (res && res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         }).catch(() => {});
         return hit;
