@@ -1,0 +1,61 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Winter Arc — Instrument v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@700;900&family=Space+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--k:#000;--p:#0a0a0a;--l1:#1f1f1f;--l2:#2e2e2e;--w:#f2f2f2;--g1:#8a8a8a;--g2:#555;--a:#8ecbff;--snap:cubic-bezier(.4,0,1,1)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--k) radial-gradient(#161616 1px,transparent 1.2px) 0 0/12px 12px;color:var(--w);font:15px "Space Grotesk",sans-serif;min-height:100vh;padding:20px 32px 40px}
+.m{font-family:"Space Mono",monospace}.lb{font:11px "Space Mono",monospace;text-transform:uppercase;letter-spacing:.12em;color:var(--g2)}
+.wrap{max-width:1120px;margin:auto}
+/* status strip */
+.bar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--l1);padding-bottom:12px}
+.logo{font:900 20px Doto;letter-spacing:.04em}.clock{font:700 20px Doto;color:var(--g1)}
+nav{display:flex;border:1px solid var(--l2)}nav a{font:11px "Space Mono";letter-spacing:.1em;text-transform:uppercase;color:var(--g1);padding:9px 14px;border-right:1px solid var(--l2);cursor:pointer;text-decoration:none}nav a:last-child{border-right:0}nav a i{font-style:normal;color:var(--g2);margin-right:6px}nav a.on{background:var(--w);color:var(--k)}nav a.on i{color:var(--k)}
+/* hero */
+.hero{display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:end;padding:36px 0 28px}
+.pct{font:900 168px/.78 Doto;letter-spacing:-.02em}.pct sup{font-size:56px;color:var(--a);vertical-align:top;margin-left:6px}
+.spec{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--l2)}.spec div{padding:12px 14px 0 0}.spec b{display:block;font:700 30px Doto;margin-top:6px}
+.seg{display:flex;gap:4px;margin-top:22px}.seg i{flex:1;height:10px;background:var(--l1);transition:background .1s var(--snap)}.seg i.on{background:var(--a);box-shadow:0 0 10px rgba(142,203,255,.5)}
+/* modules */
+.grid{display:grid;grid-template-columns:1fr 1.35fr;gap:1px;background:var(--l1);border:1px solid var(--l1)}
+.mod{background:var(--p);padding:18px}.mh{display:flex;justify-content:space-between;margin-bottom:6px}
+.r{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;min-height:52px;border-top:1px solid #151515;cursor:pointer;user-select:none;transition:transform .1s var(--snap)}.r:active{transform:translateY(1px)}
+.sq{width:18px;height:18px;border:1px solid var(--g2);display:grid;place-items:center}.done .sq{background:var(--a);border-color:var(--a);box-shadow:0 0 12px rgba(142,203,255,.6)}.done .sq::after{content:"";width:6px;height:6px;background:var(--k)}
+.n{font-weight:500}.done .n{color:var(--g2)}.ix{color:var(--g2);font:11px "Space Mono";margin-right:10px}
+.st{display:flex;align-items:center;gap:6px;font:700 15px "Space Mono";color:var(--g1)}.st img{width:20px;height:20px;filter:grayscale(1) brightness(.5);transition:filter .2s}.st.hot img{filter:none;animation:fl 1.2s ease-in-out infinite;transform-origin:50% 90%}.st.hot{color:var(--w)}
+@keyframes fl{50%{transform:scale(1.12) rotate(-4deg)}}
+/* LED matrix */
+.led{display:grid;grid-template-columns:110px repeat(31,1fr);gap:5px 4px;align-items:center;margin-top:12px}
+.led .h{font:11px "Space Mono";color:var(--g1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.led .d{font:10px "Space Mono";color:var(--g2);text-align:center}.led .d.t{color:var(--a)}
+.led i{aspect-ratio:1;border-radius:50%;background:#1a1a1a;cursor:pointer;transition:background .1s var(--snap),box-shadow .1s}.led i.y{background:var(--a);box-shadow:0 0 6px rgba(142,203,255,.7)}.led i.z{background:transparent;box-shadow:inset 0 0 0 1.5px var(--a)}.led i.f{background:#0f0f0f}
+.led i.t{animation:blink 1.2s steps(2) infinite}@keyframes blink{50%{box-shadow:0 0 0 2px var(--a)}}
+.legend{display:flex;gap:18px;margin-top:16px}.legend span{display:flex;align-items:center;gap:6px}.legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+@media(max-width:760px){body{padding:14px 16px calc(84px + env(safe-area-inset-bottom))}
+ nav{position:fixed;left:0;right:0;bottom:0;background:var(--k);border-width:1px 0 0;padding-bottom:env(safe-area-inset-bottom);z-index:5}nav a{flex:1;text-align:center;padding:16px 0;font-size:10px}nav a i{display:block;margin:0 0 4px}
+ .hero{grid-template-columns:1fr;gap:18px;padding:24px 0}.pct{font-size:128px}.spec{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}
+ .ledw{overflow-x:auto;margin:0 -18px;padding:0 18px}.led{grid-template-columns:96px repeat(31,12px);width:max-content}.clock{display:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body><div class="wrap">
+<div class="bar"><span class="logo">WINTER ARC</span>
+<nav><a class="on"><i>1</i>Today</a><a><i>2</i>Habits</a><a><i>3</i>Tasks</a><a><i>4</i>Goals</a><a><i>5</i>Insights</a></nav>
+<span class="clock" id="clk">00:00</span></div>
+
+<section class="hero"><div class="pct" id="pct">56<sup>%</sup></div>
+<div><div class="lb">Thu 01 Oct 2026 — day 001 of 365</div>
+<div class="seg" id="seg"></div>
+<div class="spec" style="margin-top:22px"><div><span class="lb">Done</span><b id="dn">5/9</b></div><div><span class="lb">Best run</span><b>12D</b></div><div><span class="lb">Freezes</span><b>09</b></div><div><span class="lb">Remaining</span><b>364</b></div></div></div></section>
+
+<div class="grid">
+<div class="mod"><div class="mh"><span class="lb">01 / Habits</span><span class="lb">Tap to log · hold to freeze</span></div><div id="list"></div></div>
+<div class="mod"><div class="mh"><span class="lb">02 / October matrix</span><span class="lb" style="color:var(--a)">● live</span></div>
+<div class="ledw"><div class="led" id="led"></div></div>
+<div class="legend lb"><span><i style="background:var(--a)"></i>Done</span><span><i style="box-shadow:inset 0 0 0 1.5px var(--a)"></i>Frozen</span><span><i style="background:#1a1a1a"></i>Missed</span></div></div>
+</div></div>
+<script>
+const F='https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Fire/3D/fire_3d.png',T=14;
+const H=[["Wake up at 5am",12,1],["Meditation",4,1],["Gym",2,0],["Read 10 pages",7,1],["Eat healthy",0,0],["Plan next day",3,1],["Journaling",1,0],["Cold shower",5,1],["No social media",0,0]];
+function upd(){const d=[...list.children].filter(x=>x.classList.contains('done')).length;pct.innerHTML=Math.round(d/9*100)+'<sup>%</sup>';dn.textContent=d+'/9';seg.innerHTML=H.map((_,i)=>`<i class="${i<d?'on':''}"></i>`).join('')}
+list.innerHTML=H.map(([n,s,d],i)=>`<div class="r ${d?'done':''}" onclick="this.classList.toggle('done');upd()"><span class="sq"></span><span class="n"><span class="ix">${String(i+1).padStart(2,'0')}</span>${n}</span><span class="st ${s>=3?'hot':''}"><img src="${F}">${String(s).padStart(2,'0')}</span></div>`).join('');
+let o='<span></span>';for(let i=1;i<=31;i++)o+=`<span class="d ${i==T?'t':''}">${i%5==0||i==1||i==T?i:'·'}</span>`;
+H.forEach(([n],r)=>{o+=`<span class="h">${n}</span>`;for(let i=1;i<=31;i++)o+=`<i class="${i>T?'f':i==T?'t':(i==9&&r==2)?'z':((i*5+r*3)%4?'y':'')}" onclick="this.classList.toggle('y')"></i>`});led.innerHTML=o;
+const tick=()=>clk.textContent=new Date().toTimeString().slice(0,8);tick();setInterval(tick,1000);upd();
+</script></body></html>
