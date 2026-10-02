@@ -191,6 +191,8 @@ h1,h2,h3,h4 { margin: 0; font-weight: 600; }
 .row { display: flex; align-items: center; gap: 10px; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--g1); }
+.muted.sy-warn { color: var(--warn); }
+.muted.sy-error { color: var(--danger); }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { padding: 26px; text-align: center; color: var(--g1); font: 11px var(--f-mono);
          letter-spacing: .12em; text-transform: uppercase; }

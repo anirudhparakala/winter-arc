@@ -247,9 +247,11 @@
   const modalIsClosed = () => document.getElementById('modalRoot').hidden;
   const reopenSettings = () => { if (!modalIsClosed()) UI.close(); openSettings(); };
   /** error text is announced at once (role=alert); the ordinary status line stays polite */
-  function showLine(el, text, isError) {
+  function showLine(el, text, isError, warn) {
     if (!el) return;
     el.setAttribute('role', isError ? 'alert' : 'status');
+    el.classList.toggle('sy-error', !!isError);
+    el.classList.toggle('sy-warn', !isError && warn === true);
     el.textContent = text;
   }
 
@@ -327,6 +329,7 @@
   function signedOutText(s) {
     return s.state === 'attention' || s.state === 'pending' || s.message === 'Sign in again' ? s.message : '';
   }
+  const needsAttention = s => s.state === 'attention' || s.state === 'pending' || s.message === 'Sign in again';
   function syncSectionHTML() {
     const s = sync.status();
     if (!sync.isConfigured()) return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
@@ -335,17 +338,17 @@
       <label class="field"><span>Email</span><input class="input" id="syEmail" type="email" autocomplete="username" value="${esc(s.email || '')}"></label>
       <label class="field"><span>Password</span><input class="input" id="syPass" type="password" autocomplete="current-password"></label>
       <div class="row" style="gap:8px;margin-bottom:6px"><button class="btn btn-sm btn-primary" id="syIn">Sign in</button></div>
-      <p class="muted" id="syLine" role="status" style="font-size:12px;margin:0 0 16px;line-height:1.55">${esc(signedOutText(s))}</p>`;
+      <p class="muted${needsAttention(s) ? ' sy-warn' : ''}" id="syLine" role="status" style="font-size:12px;margin:0 0 16px;line-height:1.55">${esc(signedOutText(s))}</p>`;
     return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
       <p class="muted" style="font-size:12px;margin:0 0 8px;overflow-wrap:anywhere">Signed in as <b>${esc(s.email || '')}</b></p>
-      <p class="muted" id="syLine" role="status" style="font-size:12px;margin:0 0 10px;line-height:1.55">${esc(statusText(s))}</p>
+      <p class="muted${needsAttention(s) ? ' sy-warn' : ''}" id="syLine" role="status" style="font-size:12px;margin:0 0 10px;line-height:1.55">${esc(statusText(s))}</p>
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:16px"><button class="btn btn-sm" id="syNow">Sync now</button><button class="btn btn-sm" id="syOut">Sign out</button></div>`;
   }
 
   sync.onStatus(s => {
     paintDot(s);
     const el = document.getElementById('syLine');       // only while Settings is open
-    if (el) showLine(el, sync.isSignedIn() ? statusText(s) : signedOutText(s));
+    if (el) showLine(el, sync.isSignedIn() ? statusText(s) : signedOutText(s), false, needsAttention(s));
   });
   paintDot(sync.status());
 
