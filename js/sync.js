@@ -6,8 +6,9 @@
    Known limits (accepted):
    - Two tabs sharing one storage are only coordinated for the token refresh; reloading on a
      `storage` event is the UI task's job.
-   - A PATCH that was applied but whose response was lost can leave one freeze token of drift
-     (self-limiting: the next sync sees the new version and merges).
+   - A write whose reply was lost is recognised on the next run through the in-flight record. The one
+     window left: the server applied it AND another device pushed again before this device retried; if
+     this device had also reversed that very edit meanwhile, the reversal can be undone once.
    - jsonb does not keep key order; irrelevant because Merge.equal ignores order.
 
    syncNow({interactive:true}) may open the first-connect dialog (Sync now button, sign-in);
@@ -18,6 +19,7 @@
 
   const SESSION_KEY = 'winterArc.sync';
   const BASE_KEY = 'winterArc.sync.base';
+  const INFLIGHT_KEY = 'winterArc.sync.inflight';   // {userId, version, data}: a write whose reply we may not have seen
   const REFRESH_MARGIN_MS = 60000;
   const DEBOUNCE_MS = 3000;
   const MAX_ATTEMPTS = 4;
@@ -72,8 +74,10 @@
       const work = (async () => {
         const res = await fx(config.url.replace(/\/+$/, '') + path, {
           method,
-          headers: Object.assign({ apikey: config.anonKey, 'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + (opt.token || config.anonKey) }, opt.prefer ? { Prefer: opt.prefer } : {}),
+          // apikey always (works for the legacy anon JWT and the newer sb_publishable_ keys); Authorization only
+          // with a real user token, because a publishable key is not a JWT and must not be sent as a Bearer
+          headers: Object.assign({ apikey: config.anonKey, 'Content-Type': 'application/json' },
+            opt.token ? { Authorization: 'Bearer ' + opt.token } : {}, opt.prefer ? { Prefer: opt.prefer } : {}),
           body: opt.body === undefined ? undefined : JSON.stringify(opt.body),
           signal: ctl ? ctl.signal : undefined
         });
@@ -135,19 +139,31 @@
       if (!Array.isArray(r.json)) throw new HttpError(502, 'Unexpected reply');   // never mistake junk for "no row"
       return r.json[0] || null;
     }
+    /* In-flight record: before every write we note what we are about to send. If the reply is lost
+       (network error, timeout, 5xx) the server may or may not have applied it; the next run compares the
+       row with this record and, if it matches, adopts it as the base. Without it a later reversal of that
+       very edit (un-tick, delete) would look like "unchanged locally, changed remotely" and be undone.
+       Definitive answers (CAS miss, 409, 4xx) clear it. */
+    const clearInflight = () => drop(INFLIGHT_KEY);
+    const setInflight = (userId, version, data) => writeJSON(INFLIGHT_KEY, { userId, version, data });
+    const refused = r => { if (r.status < 500) clearInflight(); return httpErr(r); };
     async function insertRow(s, data) {
+      setInflight(s.userId, 1, data);
       const r = await api('POST', '/rest/v1/user_state', { body: { user_id: s.userId, data, version: 1 }, prefer: 'return=representation' });
-      if (r.status === 409) return false;
-      if (!r.ok) throw httpErr(r);
+      if (r.status === 409) { clearInflight(); return false; }
+      if (!r.ok) throw refused(r);
       if (r.status === 201 || (Array.isArray(r.json) && r.json.length === 1)) return true;
-      throw new HttpError(502, 'Unexpected reply');
+      throw new HttpError(502, 'Unexpected reply');                 // ambiguous: keep the record
     }
     /** compare-and-set: true only if the row still had `fromVersion` */
     async function pushCAS(s, data, fromVersion) {
+      setInflight(s.userId, fromVersion + 1, data);
       const r = await api('PATCH', '/rest/v1/user_state?user_id=eq.' + enc(s.userId) + '&version=eq.' + fromVersion,
         { body: { data, version: fromVersion + 1, updated_at: new Date(now()).toISOString() }, prefer: 'return=representation' });
-      if (!r.ok) throw httpErr(r);
-      return Array.isArray(r.json) && r.json.length === 1;
+      if (!r.ok) throw refused(r);
+      const ok = Array.isArray(r.json) && r.json.length === 1;
+      if (!ok) clearInflight();
+      return ok;
     }
 
     /** a base belongs to one account; one without (or with another) userId counts as no base */
@@ -155,7 +171,7 @@
       const b = readJSON(BASE_KEY);
       return b && userId && b.userId === userId && typeof b.version === 'number' && b.data ? b : null;
     }
-    const saveBase = (userId, version, data) => writeJSON(BASE_KEY, { userId, version, data });
+    const saveBase = (userId, version, data) => { writeJSON(BASE_KEY, { userId, version, data }); clearInflight(); };   // a confirmed state supersedes any in-flight note
 
     /* ---------- one sync pass ---------- */
     async function run(live, interactive) {
@@ -169,6 +185,12 @@
       let chosen = null;                                   // the first-connect answer survives a lost race
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const row = await getRow(s); live();
+        const pending = readJSON(INFLIGHT_KEY);
+        if (pending) {
+          if (pending.userId === s.userId && row && row.version === pending.version && merge.equal(row.data, pending.data)) {
+            setBase(row.version, row.data);              // our earlier push DID land (its reply was lost): that is the base now
+          } else clearInflight();                        // it did not land, or somebody else wrote since: normal merge
+        }
         const local = store.snapshot();
         if (!row) {
           const ok = await insertRow(s, local); live();
@@ -176,6 +198,7 @@
           continue;
         }
         if (!merge.isState(row.data)) throw new AttentionError('The cloud data looks unreadable — nothing was changed');
+        if (base && row.version < base.version) base = null;   // the cloud row was deleted/recreated or restored: our base is meaningless
         if (!base) {
           if (merge.isPristine(local)) { store.applySynced(row.data); setBase(row.version, store.snapshot()); return 'downloaded'; }
           if (merge.isPristine(row.data)) {
@@ -279,7 +302,7 @@
       }
       gen++;                                               // anything still running belongs to the previous sign-in
       const prev = readJSON(SESSION_KEY);
-      if (prev && prev.userId && r.json.user && prev.userId !== r.json.user.id) drop(BASE_KEY);   // another account: its base is not ours
+      if (prev && prev.userId && r.json.user && prev.userId !== r.json.user.id) { drop(BASE_KEY); clearInflight(); }   // another account: its base is not ours
       saveSession(r.json, email);
       setStatus({ state: 'idle', message: 'Signed in', email });
       return syncNow({ interactive: true });
@@ -288,7 +311,7 @@
     async function signOut() {
       gen++;
       const s = readJSON(SESSION_KEY);
-      drop(SESSION_KEY); drop(BASE_KEY);
+      drop(SESSION_KEY); drop(BASE_KEY); clearInflight();
       setStatus({ state: configured() ? 'signedOut' : 'unconfigured', message: 'Signed out', email: null, lastSyncedAt: null });
       if (s && s.accessToken && configured()) { try { await http('POST', '/auth/v1/logout?scope=local', { token: s.accessToken }); } catch (e) { /* offline: already signed out locally */ } }
     }

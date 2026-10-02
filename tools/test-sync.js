@@ -6,11 +6,11 @@ const J = x => JSON.parse(JSON.stringify(x));
 
 function fakeSupabase() {
   const S = { users: { 'me@x.com': { id: 'u1', password: 'pw' } }, tokens: {}, refresh: {}, rows: {}, calls: [],
-              offline: false, status: 0, n: 0, ttl: 3600, beforePatch: null };
+              offline: false, status: 0, n: 0, ttl: 3600, beforePatch: null, dropReplyOnce: false, applied: 0 };
   const respond = (status, json) => ({ status, ok: status >= 200 && status < 300, json: async () => { if (json === undefined) throw new Error('empty'); return json; } });
   const mint = uid => { const a = 'at' + (++S.n), r = 'rt' + S.n; S.tokens[a] = uid; S.refresh[r] = uid;
     return { access_token: a, refresh_token: r, expires_in: S.ttl, user: { id: uid } }; };
-  async function fetchImpl(url, init) {
+  async function handle(url, init) {
     const u = new URL(url); S.calls.push(init.method + ' ' + u.pathname + (u.search || ''));
     if (S.offline) throw new TypeError('Failed to fetch');
     if (S.status) return respond(S.status, { message: 'boom' });
@@ -29,14 +29,20 @@ function fakeSupabase() {
       const uid = S.tokens[tok]; if (!uid) return respond(401, { message: 'JWT expired' });
       const want = k => (u.searchParams.get(k) || '').replace(/^eq\./, '');
       if (init.method === 'GET') { const r = S.rows[uid]; return respond(200, r ? [{ data: r.data, version: r.version }] : []); }
-      if (init.method === 'POST') { if (S.rows[uid]) return respond(409, { code: '23505' }); S.rows[uid] = { data: body.data, version: body.version }; return respond(201, [body]); }
+      if (init.method === 'POST') { if (S.rows[uid]) return respond(409, { code: '23505' }); S.rows[uid] = { data: body.data, version: body.version }; S.applied++; return respond(201, [body]); }
       if (init.method === 'PATCH') {
         if (S.beforePatch) { const f = S.beforePatch; S.beforePatch = null; f(uid); }
         const r = S.rows[uid]; if (!r || String(r.version) !== want('version')) return respond(200, []);
-        S.rows[uid] = { data: body.data, version: body.version }; return respond(200, [{ data: body.data, version: body.version }]);
+        S.rows[uid] = { data: body.data, version: body.version }; S.applied++; return respond(200, [{ data: body.data, version: body.version }]);
       }
     }
     return respond(404, { message: 'nope' });
+  }
+  /** S.dropReplyOnce: the next write is APPLIED by the server but the reply never arrives (connection dies) */
+  async function fetchImpl(url, init) {
+    const before = S.applied, res = await handle(url, init);
+    if (S.dropReplyOnce && S.applied > before) { S.dropReplyOnce = false; throw new TypeError('Failed to fetch'); }
+    return res;
   }
   return { S, fetchImpl };
 }
@@ -404,10 +410,11 @@ test('17 notifyLocalChange never throws (broken storage)', async () => {
 
 /** wraps a fake server so a test can break/hold individual requests (all flags off by default) */
 function tamper(srv) {
-  const T = { patchFail: null, patchEmpty: false, junk: false, hang: false, holdGet: null, holdRefresh: null, signIn: null, junkGet: false, junkPost: false };
+  const T = { patchFail: null, patchEmpty: false, junk: false, hang: false, holdGet: null, holdRefresh: null, signIn: null, junkGet: false, junkPost: false, seen: [] };
   const resp = (status, json) => ({ status, ok: status >= 200 && status < 300, json: async () => json });
   const fetchImpl = async (url, init) => {
     const u = new URL(url), rest = u.pathname === '/rest/v1/user_state', m = init.method;
+    T.seen.push({ p: u.pathname, g: u.searchParams.get('grant_type'), m, auth: (init.headers || {}).Authorization, key: (init.headers || {}).apikey });
     if (rest && m === 'PATCH' && T.patchFail) {
       srv.S.calls.push('PATCH ' + u.pathname);
       if (T.patchFail === 'net') throw new TypeError('Failed to fetch');
@@ -777,6 +784,163 @@ test('20c junk reply on POST only (GET returns []): error, no base, retry upload
   T.T.junkPost = false;
   assert.strictEqual(await B.sync.syncNow(), 'uploaded');
   assert.strictEqual(srv.S.rows.u1.version, 1);
+});
+
+/* ================= final wave: lost replies, key formats, stale base ================= */
+const INFL = 'winterArc.sync.inflight';
+const inflight = d => JSON.parse(d.mem[INFL] || 'null');
+const hasDay = (cloudData, day) => Object.values(cloudData.logs).some(l => day in l);
+
+test('37a lost PATCH reply, then the edit is reversed: the reversal wins everywhere', async () => {
+  const srv = fakeSupabase(); const A = await signedIn(srv); const h = habitId(A);
+  tick(A, h, D1);
+  srv.S.dropReplyOnce = true;
+  assert.strictEqual(await A.sync.syncNow(), 'error');               // applied by the server, reply lost
+  assert.strictEqual(srv.S.rows.u1.version, 2); assert.ok(hasDay(J(srv.S.rows.u1.data), D1));
+  assert.ok(inflight(A), 'the in-flight record must survive an ambiguous failure');
+  A.store.commit(s => { delete s.logs[h][D1]; });                    // un-tick
+  assert.strictEqual(await A.sync.syncNow(), 'pushed');
+  assert.ok(!hasDay(J(srv.S.rows.u1.data), D1), 'cloud must not resurrect D1');
+  assert.ok(!hasDay(J(A.store.snapshot()), D1), 'local must not resurrect D1');
+  assert.ok(!inflight(A));
+  assert.ok(A.ctx.Merge.equal(J(srv.S.rows.u1.data), J(A.store.snapshot())));
+});
+
+test('37b lost POST (insert) reply, then the edit is reversed', async () => {
+  const srv = fakeSupabase(); const A = device(srv); const h = habitId(A);
+  tick(A, h, D1);
+  srv.S.dropReplyOnce = true;
+  assert.strictEqual(await A.sync.signIn('me@x.com', 'pw'), 'error');
+  assert.strictEqual(srv.S.rows.u1.version, 1); assert.ok(inflight(A));
+  A.store.commit(s => { delete s.logs[h][D1]; });
+  const out = await A.sync.syncNow();
+  assert.ok(out === 'pushed' || out === 'downloaded', out);
+  assert.ok(!hasDay(J(srv.S.rows.u1.data), D1));
+  assert.ok(!hasDay(J(A.store.snapshot()), D1));
+  assert.ok(!inflight(A));
+});
+
+test('37c lost reply, then another device pushes before the retry: merge, no crash, no loss', async () => {
+  const srv = fakeSupabase(); const A = await signedIn(srv); const B = await signedIn(srv); const h = habitId(A);
+  tick(A, h, D1); srv.S.dropReplyOnce = true;
+  assert.strictEqual(await A.sync.syncNow(), 'error');               // cloud v2 has D1
+  tick(B, h, D2); assert.strictEqual(await B.sync.syncNow(), 'merged');   // B pulls D1, pushes D2 -> v3
+  tick(A, h, D3);
+  const out = await A.sync.syncNow();
+  assert.ok(out === 'merged' || out === 'pushed', out);
+  assert.deepStrictEqual(Object.values(J(srv.S.rows.u1.data).logs).flatMap(l => Object.keys(l)).sort(), [D1, D2, D3]);
+  await B.sync.syncNow();
+  assert.deepStrictEqual(loggedDays(A), [D1, D2, D3]); assert.deepStrictEqual(loggedDays(B), [D1, D2, D3]);
+  assert.ok(!inflight(A));
+});
+
+test('37d the in-flight record survives a reload', async () => {
+  const srv = fakeSupabase(); const A = await signedIn(srv); const h = habitId(A);
+  tick(A, h, D1); srv.S.dropReplyOnce = true;
+  assert.strictEqual(await A.sync.syncNow(), 'error');
+  const A2 = device(srv, { mem: A.mem });                            // app reloaded
+  A2.store.commit(s => { delete s.logs[h][D1]; });
+  assert.strictEqual(await A2.sync.syncNow(), 'pushed');
+  assert.ok(!hasDay(J(srv.S.rows.u1.data), D1));
+  assert.ok(!inflight(A2));
+});
+
+test('37e in-flight is kept for 5xx/offline, cleared for a definitive refusal, CAS loss, sign-out', async () => {
+  const srv = fakeSupabase(); const T = tamper(srv); const A = device(T); await A.sync.signIn('me@x.com', 'pw'); const h = habitId(A);
+  tick(A, h, D1);
+  T.T.patchFail = 503; await A.sync.syncNow(); assert.ok(inflight(A), '5xx is ambiguous');
+  T.T.patchFail = 'net'; await A.sync.syncNow(); assert.ok(inflight(A), 'network failure is ambiguous');
+  T.T.patchFail = 400; await A.sync.syncNow(); assert.ok(!inflight(A), '4xx is a definitive refusal');
+  T.T.patchFail = null;
+  tick(A, h, D2);
+  srv.S.beforePatch = uid => { const r = srv.S.rows[uid]; srv.S.rows[uid] = { data: J(r.data), version: r.version + 1 }; };
+  assert.strictEqual(await A.sync.syncNow(), 'merged'); assert.ok(!inflight(A), 'CAS loss then success leaves nothing');
+  tick(A, h, D3); T.T.patchFail = 503; await A.sync.syncNow(); assert.ok(inflight(A));
+  await A.sync.signOut(); assert.ok(!inflight(A), 'sign-out clears it');
+});
+
+test('37f an in-flight record of another account is ignored and cleared', async () => {
+  const srv = fakeSupabase(); const A = await signedIn(srv); const h = habitId(A);
+  tick(A, h, D1);
+  A.mem[INFL] = JSON.stringify({ userId: 'u-other', version: 1, data: J(A.store.snapshot()) });
+  assert.strictEqual(await A.sync.syncNow(), 'pushed');
+  assert.ok(!inflight(A));
+});
+
+/* deterministic PRNG for the fuzz */
+function prng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+test('37g fuzz: 40 seeded interleavings with dropped replies converge and every reversal survives', async () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const rnd = prng(seed), pick = a => a[Math.floor(rnd() * a.length)];
+    const srv = fakeSupabase(); const A = await signedIn(srv), B = await signedIn(srv);
+    const devs = [A, B], hs = A.store.state.habits.slice(0, 3).map(x => x.id);
+    // each device owns its own days, so concurrent edits never conflict on one key and the model is exact
+    const days = [['2026-02-01', '2026-02-02', '2026-02-03'], ['2026-03-01', '2026-03-02', '2026-03-03']];
+    const model = [{ logs: {}, tasks: {}, frozen: 0 }, { logs: {}, tasks: {}, frozen: 0 }];
+    let lossBy = -1;      // a device with an unconfirmed push: no OTHER device syncs until it has retried (the accepted limit)
+    for (let step = 0; step < 24; step++) {
+      const i = Math.floor(rnd() * 2), d = devs[i], m = model[i];
+      const r = rnd();
+      if (r < 0.55) {
+        const h = pick(hs), day = pick(days[i]), k = h + '|' + day, cur = m.logs[k];
+        if (!cur) { tick(d, h, day); m.logs[k] = true; }
+        else if (cur === true && m.frozen < 4 && rnd() < 0.4) { assert.ok(d.store.freeze(h, day)); m.logs[k] = 'freeze'; m.frozen++; }
+        else if (cur === 'freeze') { assert.ok(d.store.freeze(h, day)); delete m.logs[k]; m.frozen--; }   // un-freeze
+        else { d.store.commit(s => { delete s.logs[h][day]; }); delete m.logs[k]; }                       // un-tick
+      } else if (r < 0.7) {
+        const day = pick(days[i]); d.store.addTask(day, 't' + step); (m.tasks[day] = m.tasks[day] || []).push('t' + step);
+      } else if (r < 0.8) {
+        const day = pick(days[i]), list = d.store.tasksOf(day);
+        if (list.length) { const t = pick(list); d.store.delTask(day, t.id); m.tasks[day] = m.tasks[day].filter(x => x !== t.text); }
+      } else if (lossBy < 0 || lossBy === i) {
+        srv.S.dropReplyOnce = rnd() < 0.5;
+        const out = await d.sync.syncNow();
+        srv.S.dropReplyOnce = false;
+        lossBy = out === 'error' ? i : -1;
+        if (lossBy === i && rnd() < 0.5) { if (await d.sync.syncNow() !== 'error') lossBy = -1; }
+      }
+    }
+    if (lossBy >= 0) await devs[lossBy].sync.syncNow();      // the device with the unconfirmed push retries first (see above)
+    for (let round = 0; round < 3; round++) { await A.sync.syncNow(); await B.sync.syncNow(); }
+    const cloud = J(srv.S.rows.u1.data);
+    assert.ok(A.ctx.Merge.equal(cloud, J(A.store.snapshot())), 'seed ' + seed + ': A != cloud');
+    assert.ok(B.ctx.Merge.equal(cloud, J(B.store.snapshot())), 'seed ' + seed + ': B != cloud');
+    const want = Object.assign({}, model[0].logs, model[1].logs), got = {};
+    Object.keys(cloud.logs).forEach(h => Object.keys(cloud.logs[h]).forEach(day => { got[h + '|' + day] = cloud.logs[h][day]; }));
+    assert.deepStrictEqual(got, want, 'seed ' + seed + ': logs differ');
+    const frozen = Object.values(want).filter(v => v === 'freeze').length;
+    assert.strictEqual(cloud.freezeTokens, 9 - frozen, 'seed ' + seed + ': freeze tokens');
+    [0, 1].forEach(i => days[i].forEach(day => {
+      const names = (cloud.tasks[day] || []).map(t => t.text).sort();
+      assert.deepStrictEqual(names, (model[i].tasks[day] || []).slice().sort(), 'seed ' + seed + ': tasks of ' + day);
+    }));
+  }
+});
+
+test('38 auth requests carry only apikey (no Authorization); REST/logout carry the user token', async () => {
+  const srv = fakeSupabase(); const T = tamper(srv);
+  const A = device(T, { config: { url: BASE, anonKey: 'sb_publishable_test' } });
+  await A.sync.signIn('me@x.com', 'pw'); tick(A, habitId(A), D1);
+  A.clock.t += 3600 * 1000 - 30 * 1000; await A.sync.syncNow();      // forces a refresh_token grant
+  const tok = session(A).accessToken; await A.sync.signOut();
+  const seen = T.T.seen;
+  assert.ok(seen.some(x => x.g === 'password') && seen.some(x => x.g === 'refresh_token'));
+  seen.forEach(x => assert.strictEqual(x.key, 'sb_publishable_test', 'apikey header always present'));
+  seen.filter(x => x.p === '/auth/v1/token').forEach(x => assert.strictEqual(x.auth, undefined, 'no Authorization on ' + x.g));
+  seen.filter(x => x.p === '/rest/v1/user_state').forEach(x => assert.ok(/^Bearer at\d+$/.test(x.auth), String(x.auth)));
+  const lo = seen.find(x => x.p === '/auth/v1/logout'); assert.strictEqual(lo.auth, 'Bearer ' + tok);
+});
+
+test('39 a cloud row older than the base (deleted and recreated) is not merged against the stale base', async () => {
+  const srv = fakeSupabase(); const A = await signedIn(srv); const h = habitId(A);
+  tick(A, h, D1); await A.sync.syncNow(); assert.strictEqual(srv.S.rows.u1.version, 2);
+  const other = fakeSupabase(); const C = await signedIn(other); tick(C, habitId(C), D3); await C.sync.syncNow();
+  srv.S.rows.u1 = { data: J(other.S.rows.u1.data), version: 1 };     // restored / recreated: version went DOWN
+  const cloudBefore = JSON.stringify(srv.S.rows.u1);
+  assert.strictEqual(await A.sync.syncNow(), 'error');               // background: must not merge silently
+  assert.strictEqual(A.sync.status().state, 'attention'); assert.ok(/tap Sync now/.test(A.sync.status().message));
+  assert.strictEqual(JSON.stringify(srv.S.rows.u1), cloudBefore);
+  assert.strictEqual(logsOf(A)[h][D1], true);
 });
 
 /* a never-settling promise would otherwise end the process silently with exit code 0 */
