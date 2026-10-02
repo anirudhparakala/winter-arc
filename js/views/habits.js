@@ -55,6 +55,9 @@
         const cadence = cad.value;
         const target = cadence === 'daily' ? 1
           : Math.max(1, parseInt(m.querySelector('#hTgt').value, 10) || 1);
+        if (existing && !Store.state.habits.some(x => x.id === existing.id)) {   // deleted on another device while this dialog was open
+          UI.close(); UI.toast('That habit was changed on another device.'); return;
+        }
         Store.commit(s => {
           if (existing) {
             const t = s.habits.find(x => x.id === existing.id);

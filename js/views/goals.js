@@ -94,6 +94,9 @@
           milestones
         };
         const id = existing ? existing.id : Store.uid();
+        if (existing && !Store.state.goals.some(x => x.id === id)) {              // deleted on another device while this dialog was open
+          UI.close(); UI.toast('That goal was changed on another device.'); return;
+        }
         Store.commit(s => {
           if (existing) Object.assign(s.goals.find(x => x.id === id), patch);
           else s.goals.push(Object.assign({ id, current: 0, createdAt: D.todayKey() }, patch));

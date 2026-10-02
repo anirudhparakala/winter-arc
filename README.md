@@ -156,13 +156,18 @@ to Supabase with plain `fetch`. The theme (dark/light) is per device and never s
 3. **Authentication → Users → Add user** — your email and a password, auto-confirm.
 4. **Authentication → Sign In / Providers** — turn **off** "Allow new users to sign up",
    so nobody else can create an account in your project.
-5. **Project Settings → API** — copy the **Project URL** and the **anon public** key into
-   [`js/sync-config.js`](js/sync-config.js). Both are public by design (row-level security
-   is what protects the data). **Never use the `service_role` key** — it bypasses all
-   security and must never go into a web page.
-6. Push the site (see *Updating the live site*), then on **each device**: open the app →
+5. **Project Settings → API Keys** — copy the **Project URL** and the public key — the
+   **publishable** key (`sb_publishable_…`) or the legacy **anon** key; both are public by
+   design (row-level security is what protects the data) — into
+   [`js/sync-config.js`](js/sync-config.js) (`anonKey` holds either one). **Never use the
+   secret / `service_role` key** — it bypasses all security and must never go into a web page.
+6. After editing `js/sync-config.js`, **also bump `CACHE` in `sw.js`** (e.g. `winter-arc-v12` →
+   `winter-arc-v13`), because installed copies serve the cached config first. Then push the
+   site (see *Updating the live site*), and on **each device**: open the app →
    **Settings → Cloud sync** → sign in with that email and password. Sign-in is per device;
-   the password is never stored, only a session token that refreshes itself.
+   the password is never stored, only a session token that refreshes itself. If Settings
+   still says *Not set up* after the push, open the app twice (on iPhone, fully close it from
+   the app switcher first).
 
 ### Using it
 
@@ -179,6 +184,8 @@ to Supabase with plain `fetch`. The theme (dark/light) is per device and never s
   will be erased on their next sync. Signed out, it only affects this device. If you reset
   while offline, the cloud copy is overwritten at the next successful sync.
 - Importing a backup is just another edit — it syncs like any other change.
+- Signing out and back in on the same account asks the connect question again (**Merge
+  both** may bring back things you deleted on another device in the meantime).
 
 ### Good to know
 
@@ -189,13 +196,13 @@ to Supabase with plain `fetch`. The theme (dark/light) is per device and never s
   is syncing wins". A record deleted on one device but edited on another is kept.
 - The data in your Supabase project is readable by you (the project owner) — there is no
   end-to-end encryption.
-- A single-file build (`dist/winter-arc.html`) contains whatever is in `js/sync-config.js`
-  at build time. The committed one is built with sync switched off.
+- The single-file build (`dist/winter-arc.html`) is built from whatever `js/sync-config.js`
+  holds. Both values are public, but leave them empty if you share the file.
 
 ### Developing
 
 `node tools/mock-supabase.js` starts a local fake Supabase on `127.0.0.1:54321` (no account
-needed; point `js/sync-config.js` at `http://localhost:54321` with any anon key and sign in as
+needed; point `js/sync-config.js` at `http://localhost:54321` with any key and sign in as
 `me@example.com` / `hunter2`). See the file header for its test controls; `--selftest` checks it.
 
 ---
@@ -208,7 +215,7 @@ css/style.css           design tokens + every component
 js/store.js             state, persistence, date maths, streaks and rates
 js/merge.js             pure three-way merge used by sync
 js/sync.js              Supabase sync engine (plain fetch, no library)
-js/sync-config.js       your Supabase URL + anon key (empty = sync off)
+js/sync-config.js       your Supabase URL + public key (empty = sync off)
 supabase/schema.sql     the one table + row-level security, run once in Supabase
 js/charts.js            SVG charts (segmented bars, sparkline, area, multi-line)
 js/ui.js                icons, emoji, modal, toast

@@ -5,9 +5,10 @@
 --   2. SQL editor -> paste and run this whole file.
 --   3. Authentication -> Users -> Add user (your email + a password, auto-confirm).
 --   4. Authentication -> Sign In / Providers -> turn OFF "Allow new users to sign up".
---   5. Project Settings -> API -> copy the Project URL and the "anon public" key into
---      js/sync-config.js. NEVER the service_role key.
---   6. Push the site, then sign in on each device (Settings -> Cloud sync).
+--   5. Project Settings -> API Keys -> copy the Project URL and the public key (the publishable
+--      key sb_publishable_... or the legacy anon key; both are public by design) into
+--      js/sync-config.js. NEVER the secret / service_role key.
+--   6. Bump CACHE in sw.js, push the site, then sign in on each device (Settings -> Cloud sync).
 
 create table public.user_state (
   user_id    uuid primary key references auth.users(id) on delete cascade,
