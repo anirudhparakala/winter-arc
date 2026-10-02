@@ -284,6 +284,32 @@ test('11 refresh rejected -> attention "Sign in again", tokens dropped, email ke
   assert.strictEqual(A.sync.isSignedIn(), false);
 });
 
+/** the fake speaks the old GoTrue shape ({error:'invalid_grant'}); current Supabase answers 400s with {code, error_code, msg} */
+function currentGoTrue(srv) {
+  const fetchImpl = async (url, init) => {
+    const r = await srv.fetchImpl(url, init);
+    if (r.status === 400) { const refresh = /refresh_token/.test(url);
+      const j = refresh ? { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token: Refresh Token Not Found' }
+                        : { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' };
+      return { status: 400, ok: false, json: async () => j }; }
+    if (r.status === 401) return { status: 401, ok: false, json: async () => ({ code: 'PGRST301', message: 'JWT expired' }) };
+    return r;
+  };
+  return { S: srv.S, fetchImpl };
+}
+test('11b current GoTrue error shapes: wrong password and rejected refresh behave like the old ones', async () => {
+  const srv = currentGoTrue(fakeSupabase()); const d = device(srv);
+  await assert.rejects(() => d.sync.signIn('me@x.com', 'nope'), e => e && e.message === 'Wrong email or password');
+  assert.ok(!('winterArc.sync' in d.mem));
+  const A = await signedIn(srv); const h = habitId(A);
+  srv.S.refresh = {}; srv.S.tokens = {};
+  tick(A, h, D1);
+  assert.strictEqual(await A.sync.syncNow(), 'error');
+  assert.strictEqual(A.sync.status().state, 'attention');
+  assert.strictEqual(A.sync.status().message, 'Sign in again');
+  assert.strictEqual(logsOf(A)[h][D1], true);
+});
+
 test('12 invalid remote row -> attention; local and cloud untouched', async () => {
   const srv = fakeSupabase(); const A = await signedIn(srv); const h = habitId(A);
   srv.S.rows.u1.data = {};

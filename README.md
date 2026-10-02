@@ -192,6 +192,12 @@ to Supabase with plain `fetch`. The theme (dark/light) is per device and never s
 - A single-file build (`dist/winter-arc.html`) contains whatever is in `js/sync-config.js`
   at build time. The committed one is built with sync switched off.
 
+### Developing
+
+`node tools/mock-supabase.js` starts a local fake Supabase on `127.0.0.1:54321` (no account
+needed; point `js/sync-config.js` at `http://localhost:54321` with any anon key and sign in as
+`me@example.com` / `hunter2`). See the file header for its test controls; `--selftest` checks it.
+
 ---
 
 ## Project layout

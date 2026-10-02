@@ -326,10 +326,8 @@
     return s.message;
   }
   /** signed out: only a message that asks something of the user is worth showing */
-  function signedOutText(s) {
-    return s.state === 'attention' || s.state === 'pending' || s.message === 'Sign in again' ? s.message : '';
-  }
   const needsAttention = s => s.state === 'attention' || s.state === 'pending' || s.message === 'Sign in again';
+  function signedOutText(s) { return needsAttention(s) ? s.message : ''; }
   function syncSectionHTML() {
     const s = sync.status();
     if (!sync.isConfigured()) return `<div class="card-label" style="margin-bottom:8px">Cloud sync</div>
