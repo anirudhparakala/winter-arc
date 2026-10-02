@@ -859,6 +859,22 @@ test('37e in-flight is kept for 5xx/offline, cleared for a definitive refusal, C
   await A.sync.signOut(); assert.ok(!inflight(A), 'sign-out clears it');
 });
 
+test('37h in-flight write never reached the server and another device took that version: its row is NOT adopted as base', async () => {
+  const srv = fakeSupabase(); const T = tamper(srv); const A = device(T); await A.sync.signIn('me@x.com', 'pw'); const h = habitId(A);
+  const B = await signedIn(srv);
+  tick(A, h, D1); T.T.patchFail = 'net';
+  assert.strictEqual(await A.sync.syncNow(), 'error');
+  assert.strictEqual(inflight(A).version, 2); assert.strictEqual(srv.S.rows.u1.version, 1);   // never applied
+  tick(B, h, D2); assert.strictEqual(await B.sync.syncNow(), 'pushed');                          // B takes version 2 with different data
+  T.T.patchFail = null;
+  assert.strictEqual(await A.sync.syncNow(), 'merged');
+  const days = o => Object.values(o.logs).flatMap(l => Object.keys(l)).sort();
+  assert.deepStrictEqual(days(J(srv.S.rows.u1.data)), [D1, D2]);
+  await B.sync.syncNow();
+  assert.deepStrictEqual(loggedDays(A), [D1, D2]); assert.deepStrictEqual(loggedDays(B), [D1, D2]);
+  assert.ok(!inflight(A));
+});
+
 test('37f an in-flight record of another account is ignored and cleared', async () => {
   const srv = fakeSupabase(); const A = await signedIn(srv); const h = habitId(A);
   tick(A, h, D1);

@@ -6,9 +6,10 @@
    Known limits (accepted):
    - Two tabs sharing one storage are only coordinated for the token refresh; reloading on a
      `storage` event is the UI task's job.
-   - A write whose reply was lost is recognised on the next run through the in-flight record. The one
-     window left: the server applied it AND another device pushed again before this device retried; if
-     this device had also reversed that very edit meanwhile, the reversal can be undone once.
+   - A write whose reply was lost is recognised on the next run through the in-flight record. Window left:
+     the server applied our push, the reply was lost AND another device pushed before we retried; then a
+     change that device made to the same item can be undone once and freeze tokens can drift by about one.
+     Data always converges; nothing is duplicated or stuck.
    - jsonb does not keep key order; irrelevant because Merge.equal ignores order.
 
    syncNow({interactive:true}) may open the first-connect dialog (Sync now button, sign-in);
